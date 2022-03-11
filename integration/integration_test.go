@@ -97,6 +97,7 @@ func TestMain(m *testing.M) {
 	cleanup := func() {
 		fmt.Printf("Clean inspektor-gadget:\n")
 		cleanupInspektorGadget.runWithoutTest()
+
 		fmt.Printf("Clean SPO:\n")
 		cleanupSPO.runWithoutTest()
 	}
@@ -110,7 +111,7 @@ func TestMain(m *testing.M) {
 		for _, cmd := range initCommands {
 			err := cmd.runWithoutTest()
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "%v\n", err)
+				fmt.Fprintln(os.Stderr, err)
 				cleanup()
 				os.Exit(-1)
 			}
@@ -160,7 +161,7 @@ func TestBiolatency(t *testing.T) {
 	commands := []*command{
 		{
 			name:           "Run biolatency gadget",
-			cmd:            "id=$($KUBECTL_GADGET biolatency start --node $(kubectl get node --no-headers | cut -d' ' -f1)); sleep 15; $KUBECTL_GADGET biolatency stop $id",
+			cmd:            "id=$($KUBECTL_GADGET biolatency start --node $(kubectl get node --no-headers | cut -d' ' -f1 | head -1)); sleep 15; $KUBECTL_GADGET biolatency stop $id",
 			expectedRegexp: `usecs\s+:\s+count\s+distribution`,
 		},
 	}
@@ -175,20 +176,22 @@ func TestBiotop(t *testing.T) {
 
 	biotopCmd := &command{
 		name:           "Start biotop gadget",
-		cmd:            "$KUBECTL_GADGET biotop --node $(kubectl get node --no-headers | cut -d' ' -f1)",
+		cmd:            fmt.Sprintf("$KUBECTL_GADGET biotop --node $(kubectl get pod -n %s test-pod -o jsonpath='{.spec.nodeName}')", ns),
 		expectedRegexp: `test-pod\s+test-pod\s+\d+\s+dd`,
 		startAndStop:   true,
 	}
 
+	// Gadget must be executed after running the test-pod to be able to retrieve
+	// the node where it is running. Required to support multi-node clusters.
 	commands := []*command{
 		createTestNamespaceCommand(ns),
-		biotopCmd,
 		{
 			name:           "Run pod which generates I/O",
 			cmd:            busyboxPodCommand(ns, "while true; do dd if=/dev/zero of=/tmp/test count=4096; done"),
 			expectedRegexp: "pod/test-pod created",
 		},
 		waitUntilTestPodReadyCommand(ns),
+		biotopCmd,
 		deleteTestNamespaceCommand(ns),
 	}
 
@@ -733,20 +736,22 @@ func TestTcptop(t *testing.T) {
 
 	tcptopCmd := &command{
 		name:           "Start tcptop gadget",
-		cmd:            fmt.Sprintf("$KUBECTL_GADGET tcptop --node $(kubectl get node --no-headers | cut -d' ' -f1) -n %s -p test-pod", ns),
+		cmd:            fmt.Sprintf("$KUBECTL_GADGET tcptop --node $(kubectl get pod -n %s test-pod -o jsonpath='{.spec.nodeName}') -n %s -p test-pod", ns, ns),
 		expectedRegexp: `wget`,
 		startAndStop:   true,
 	}
 
+	// Gadget must be executed after running the test-pod to be able to retrieve
+	// the node where it is running. Required to support multi-node clusters.
 	commands := []*command{
 		createTestNamespaceCommand(ns),
-		tcptopCmd,
 		{
 			name:           "Run pod which opens TCP socket",
 			cmd:            busyboxPodCommand(ns, "while true; do wget -q -O /dev/null https://kinvolk.io; done"),
 			expectedRegexp: "pod/test-pod created",
 		},
 		waitUntilTestPodReadyCommand(ns),
+		tcptopCmd,
 		deleteTestNamespaceCommand(ns),
 	}
 
