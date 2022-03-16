@@ -364,13 +364,39 @@ jobs:
     # level: 1
     needs: [test-unit, build-kubectl-gadget, build-local-gadget, build-docker-image]
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        k8s-distro: [minikube-github, aro]
+    concurrency:
+      # Ensure only one test-integration job runs at a time to avoid trying to
+      # deploy IG multiple times on the same Kubernetes cluster. It is
+      # specifically needed for ARO because it is a pre-created cluster.
+      # TODO: Make minikube-github and aro run in parallel, see issue #575.
+      group: no-simultaneous-integration-tests
     steps:
-    - name: Setup Minikube
-      uses: manusa/actions-setup-minikube@v2.4.3
+    - name: Check out code
+      uses: actions/checkout@v1
+    - name: Set Kubernetes distribution
+      shell: bash
+      run: echo KUBERNETES_DISTRIBUTION="${{ matrix.k8s-distro }}" >> $GITHUB_ENV
+    - if: matrix.k8s-distro == 'minikube-github'
+      name: Setup Minikube
+      uses: manusa/actions-setup-minikube@v2.4.2
       with:
         minikube version: 'v1.25.2'
         kubernetes version: 'v1.23.0'
         github token: ${{ secrets.GITHUB_TOKEN }}
+    - if: matrix.k8s-distro == 'aro'
+      name: Authenticate and set ARO cluster context
+      uses: redhat-actions/oc-login@v1
+      with:
+        # API Server URL
+        openshift_server_url: ${{ secrets.OPENSHIFT_SERVER }}
+
+        # Credentials (TODO: Use a functional Service Account, see issue #574)
+        openshift_username: ${{ secrets.OPENSHIFT_USER }}
+        openshift_password: ${{ secrets.OPENSHIFT_PASSWORD }}
     - name: Set IMAGE_TAG
       run: |
         TMP1=${GITHUB_REF#*/}
@@ -380,8 +406,6 @@ jobs:
             IMAGE_TAG="latest"
         fi
         echo IMAGE_TAG=$IMAGE_TAG >> $GITHUB_ENV
-    - name: Check out code
-      uses: actions/checkout@v1
     - name: Get kubectl-gadget-linux-amd64.tar.gz from artifact.
       uses: actions/download-artifact@v2
       with:
