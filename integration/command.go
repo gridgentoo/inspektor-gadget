@@ -20,6 +20,7 @@ import (
 	"math/rand"
 	"os/exec"
 	"regexp"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -27,9 +28,16 @@ import (
 	"github.com/kr/pretty"
 )
 
+type ActionOnError int
+
+const (
+	Fatal ActionOnError = iota
+	Skip
+)
+
 type command struct {
-	// name of the command to be run, used to give information.
-	name string
+	// description of the command to be run, used to give information.
+	description string
 
 	// cmd is a string of the command which will be run.
 	cmd string
@@ -38,21 +46,26 @@ type command struct {
 	// do stuff and wait for its completion.
 	command *exec.Cmd
 
-	// stdout contains command standard output when started using Startcommand().
+	// stdout contains command standard output.
 	stdout bytes.Buffer
 
-	// stderr contains command standard output when started using Startcommand().
+	// stderr contains command standard output.
 	stderr bytes.Buffer
 
-	// expectedString contains the exact expected output of the command.
-	expectedString string
-
-	// expectedRegexp contains a regex used to match against the command output.
-	expectedRegexp string
+	// verifyOutputCallback is a callback function that is called from
+	// command.verifyOutput() to determine whether the output is the expected
+	// one or not.
+	verifyOutputCallback func(string) error
 
 	// cleanup indicates this command is used to clean resource and should not be
 	// skipped even if previous commands failed.
 	cleanup bool
+
+	// actionOnError indicates what action needs to be taken when the command
+	// output does not match the expected result. It is useful when we need to
+	// run a command and based on its output we need to skip or fail the rest of
+	// the test. By default, the test will be stopped and set as failed (Fatal).
+	actionOnError ActionOnError
 
 	// startAndStop indicates this command should first be started then stopped.
 	// It corresponds to gadget like execsnoop which wait user to type Ctrl^C.
@@ -61,78 +74,6 @@ type command struct {
 	// started indicates this command was started.
 	// It is only used by command which have startAndStop set.
 	started bool
-}
-
-var deployInspektorGadget *command = &command{
-	name:           "Deploy Inspektor Gadget",
-	cmd:            "$KUBECTL_GADGET deploy $GADGET_IMAGE_FLAG | kubectl apply -f -",
-	expectedRegexp: "gadget created",
-}
-
-var waitUntilInspektorGadgetPodsDeployed *command = &command{
-	name: "Wait until the gadget pods are started",
-	cmd: `
-	for POD in $(sleep 5; kubectl get pod -n gadget -l k8s-app=gadget -o name) ; do
-		kubectl wait --timeout=30s -n gadget --for=condition=ready $POD
-		if [ $? -ne 0 ]; then
-			kubectl get pod -n gadget
-			kubectl describe $POD -n gadget
-			exit 1
-		fi
-	done`,
-}
-
-var deploySPO *command = &command{
-	name: "Deploy Security Profiles Operator (SPO)",
-	// The security-profiles-operator-webhook deployment is not part of the
-	// yaml but created by SPO. We cannot use kubectl-wait before it is
-	// created, see also:
-	// https://github.com/kubernetes/kubernetes/issues/83242
-	// Unfortunately, it takes quite a while for
-	// security-profiles-operator-webhook to be started, hence the long
-	// timeout
-	cmd: `
-	kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.7.1/cert-manager.yaml
-	kubectl --namespace cert-manager wait --for condition=ready pod -l app.kubernetes.io/instance=cert-manager
-	curl https://raw.githubusercontent.com/kubernetes-sigs/security-profiles-operator/main/deploy/operator.yaml | \
-		sed 's/replicas: 3/replicas: 1/'|grep -v cpu: | \
-		kubectl apply -f -
-	for i in $(seq 1 120); do
-		if [ "$(kubectl get pod -n security-profiles-operator -l app=security-profiles-operator,name=security-profiles-operator-webhook -o go-template='{{len .items}}')" -ge 1 ] ; then
-			break
-		fi
-		sleep 1
-	done
-	kubectl patch deploy -n security-profiles-operator security-profiles-operator-webhook --type=json \
-		-p='[{"op": "remove", "path": "/spec/template/spec/containers/0/resources"}]'
-	kubectl patch ds -n security-profiles-operator spod --type=json \
-		-p='[{"op": "remove", "path": "/spec/template/spec/containers/0/resources"}, {"op": "remove", "path": "/spec/template/spec/containers/1/resources"}, {"op": "remove", "path": "/spec/template/spec/initContainers/0/resources"}]'
-	kubectl --namespace security-profiles-operator wait --for condition=ready pod -l app=security-profiles-operator || (kubectl get pod -n security-profiles-operator ; kubectl get events -n security-profiles-operator ; false)
-	`,
-	expectedRegexp: "pod/security-profiles-operator-.*-.* condition met",
-}
-
-func waitUntilInspektorGadgetPodsInitialized(initialDelay int) *command {
-	return &command{
-		name: "Wait until Inspektor Gadget is initialised",
-		cmd:  fmt.Sprintf("sleep %d", initialDelay),
-	}
-}
-
-var cleanupInspektorGadget *command = &command{
-	name:    "cleanup gadget deployment",
-	cmd:     "$KUBECTL_GADGET undeploy",
-	cleanup: true,
-}
-
-var cleanupSPO *command = &command{
-	name: "Remove Security Profiles Operator (SPO)",
-	cmd: `
-	kubectl delete seccompprofile -n security-profiles-operator --all
-	kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/security-profiles-operator/main/deploy/operator.yaml
-	kubectl delete -f https://github.com/jetstack/cert-manager/releases/download/v1.7.1/cert-manager.yaml
-	`,
-	cleanup: true,
 }
 
 // createExecCmd creates an exec.Cmd for the command c.cmd and stores it in
@@ -172,26 +113,31 @@ func getInspektorGadgetLogs() string {
 	return sb.String()
 }
 
-// verifyOutput verifies if the stdout match with the expected regular
-// expression and the expected string. If it doesn't, verifyOutput returns and
-// error and the gadget pod logs.
+// verifyOutput verifies if the stdout match with what is expected. If it
+// doesn't, verifyOutput returns and error and the gadget pod logs.
 func (c *command) verifyOutput() error {
-	output := c.stdout.String()
-
-	if c.expectedRegexp != "" {
-		r := regexp.MustCompile(c.expectedRegexp)
-		if !r.MatchString(output) {
-			return fmt.Errorf("output didn't match the expected regexp: %s\n%s",
-				c.expectedRegexp, getInspektorGadgetLogs())
-		}
+	if c.verifyOutputCallback == nil {
+		return nil
 	}
 
-	if c.expectedString != "" && output != c.expectedString {
-		return fmt.Errorf("output didn't match the expected string: %s\n%v\n%s",
-			c.expectedString, pretty.Diff(c.expectedString, output), getInspektorGadgetLogs())
+	err := c.verifyOutputCallback(c.stdout.String())
+	if err != nil {
+		return fmt.Errorf("%w\n%s", err, getInspektorGadgetLogs())
 	}
 
 	return nil
+}
+
+func (c *command) applyActionOnError(t *testing.T, err error) {
+	switch c.actionOnError {
+	case Fatal:
+		t.Fatal(err)
+	case Skip:
+		t.Skip(err)
+	default:
+		t.Logf("None actionOnError was defined, stop the the test and consider it failed\n")
+		t.Fatal(err)
+	}
 }
 
 // run runs the command on the given as parameter test.
@@ -213,7 +159,7 @@ func (c *command) run(t *testing.T) {
 
 	err = c.verifyOutput()
 	if err != nil {
-		t.Fatal(err)
+		c.applyActionOnError(t, err)
 	}
 }
 
@@ -285,10 +231,155 @@ func (c *command) stop(t *testing.T) {
 
 	err = c.verifyOutput()
 	if err != nil {
-		t.Fatal(err)
+		c.applyActionOnError(t, err)
 	}
 
 	c.started = false
+}
+
+func equalTo(output, expectedString string) error {
+	if output != expectedString {
+		return fmt.Errorf("output didn't match the expected string: %s\n%v",
+			expectedString, pretty.Diff(expectedString, output))
+	}
+
+	return nil
+}
+
+func matchRegExp(output, expectedRegExp string) error {
+	r := regexp.MustCompile(expectedRegExp)
+	if !r.MatchString(output) {
+		return fmt.Errorf("output didn't match the expected regexp: %s",
+			expectedRegExp)
+	}
+
+	return nil
+}
+
+// minimumKernel verifies if at least one of the kernel versions present in
+// output is newer or equal to exectedMain.expectedMajor version. The versions
+// within output are expected to be separated by spaces, e.g.
+// "<kernelVersionNodeX> <kernelVersionNodeY> ..." as generated by the command:
+// kubectl get node -o jsonpath='{.items[*].status.nodeInfo.kernelVersion}'
+func minimumKernel(output string, expectedMain, expectedMajor int32) bool {
+	split := strings.Fields(output)
+	for _, s := range split {
+		r := regexp.MustCompile(`\d+`).FindAllString(s, 2)
+		if len(r) != 2 {
+			fmt.Printf("Warn: failed to parse kernel version: %s", s)
+			continue
+		}
+
+		main, err := strconv.ParseInt(r[0], 10, 32)
+		if err != nil {
+			fmt.Printf("Warn: failed to parse main kernel version: %s", r[0])
+			continue
+		}
+
+		major, err := strconv.ParseInt(r[1], 10, 32)
+		if err != nil {
+			fmt.Printf("Warn: failed to parse major kernel release: %s", r[1])
+			continue
+		}
+
+		if int32(main) >= expectedMain && int32(major) >= expectedMajor {
+			return true
+		}
+	}
+
+	return false
+}
+
+func verifyIteratorsSupport(output string) error {
+	var main int32 = 5
+	var major int32 = 10
+
+	if minimumKernel(output, main, major) {
+		return nil
+	}
+
+	return fmt.Errorf("there is not even one node that support iterators (kernel > %d.%d)",
+		main, major)
+}
+
+func verifyTestPodCreation(output string) error {
+	return equalTo(output, "pod/test-pod created\n")
+}
+
+var deployInspektorGadget *command = &command{
+	description: "Deploy Inspektor Gadget",
+	cmd:         "$KUBECTL_GADGET deploy $GADGET_IMAGE_FLAG | kubectl apply -f -",
+	verifyOutputCallback: func(output string) error {
+		return equalTo(output, "gadget created")
+	},
+}
+
+var waitUntilInspektorGadgetPodsDeployed *command = &command{
+	description: "Wait until the gadget pods are started",
+	cmd: `
+	for POD in $(sleep 5; kubectl get pod -n gadget -l k8s-app=gadget -o name) ; do
+		kubectl wait --timeout=30s -n gadget --for=condition=ready $POD
+		if [ $? -ne 0 ]; then
+			kubectl get pod -n gadget
+			kubectl describe $POD -n gadget
+			exit 1
+		fi
+	done`,
+}
+
+func waitUntilInspektorGadgetPodsInitialized(initialDelay int) *command {
+	return &command{
+		description: "Wait until Inspektor Gadget is initialised",
+		cmd:         fmt.Sprintf("sleep %d", initialDelay),
+	}
+}
+
+var deploySPO *command = &command{
+	description: "Deploy Security Profiles Operator (SPO)",
+	// The security-profiles-operator-webhook deployment is not part of the
+	// yaml but created by SPO. We cannot use kubectl-wait before it is
+	// created, see also:
+	// https://github.com/kubernetes/kubernetes/issues/83242
+	// Unfortunately, it takes quite a while for
+	// security-profiles-operator-webhook to be started, hence the long
+	// timeout
+	cmd: `
+	kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.7.1/cert-manager.yaml
+	kubectl --namespace cert-manager wait --for condition=ready pod -l app.kubernetes.io/instance=cert-manager
+	curl https://raw.githubusercontent.com/kubernetes-sigs/security-profiles-operator/main/deploy/operator.yaml | \
+		sed 's/replicas: 3/replicas: 1/'|grep -v cpu: | \
+		kubectl apply -f -
+	for i in $(seq 1 120); do
+		if [ "$(kubectl get pod -n security-profiles-operator -l app=security-profiles-operator,name=security-profiles-operator-webhook -o go-template='{{len .items}}')" -ge 1 ] ; then
+			break
+		fi
+		sleep 1
+	done
+	kubectl patch deploy -n security-profiles-operator security-profiles-operator-webhook --type=json \
+		-p='[{"op": "remove", "path": "/spec/template/spec/containers/0/resources"}]'
+	kubectl patch ds -n security-profiles-operator spod --type=json \
+		-p='[{"op": "remove", "path": "/spec/template/spec/containers/0/resources"}, {"op": "remove", "path": "/spec/template/spec/containers/1/resources"}, {"op": "remove", "path": "/spec/template/spec/initContainers/0/resources"}]'
+	kubectl --namespace security-profiles-operator wait --for condition=ready pod -l app=security-profiles-operator || (kubectl get pod -n security-profiles-operator ; kubectl get events -n security-profiles-operator ; false)
+	`,
+	verifyOutputCallback: func(output string) error {
+		return matchRegExp(output, "pod/security-profiles-operator-.*-.* condition met")
+	},
+}
+
+var cleanupInspektorGadget *command = &command{
+	description: "cleanup gadget deployment",
+	cmd:         "$KUBECTL_GADGET undeploy",
+	cleanup:     true,
+}
+
+var cleanupSPO *command = &command{
+	description: "Remove Security Profiles Operator (SPO)",
+	cmd: `
+	kubectl delete seccompprofile -n security-profiles-operator --all
+	kubectl delete -f https://raw.githubusercontent.com/kubernetes-sigs/security-profiles-operator/main/deploy/operator.yaml
+	kubectl delete -f https://github.com/jetstack/cert-manager/releases/download/v1.7.1/cert-manager.yaml
+	`,
+	cleanup: true,
 }
 
 // busyboxPodCommand returns a string which can be used as command to run a
@@ -308,9 +399,11 @@ func generateTestNamespaceName(namespace string) string {
 // name is given as parameter.
 func createTestNamespaceCommand(namespace string) *command {
 	return &command{
-		name:           "Create test namespace",
-		cmd:            fmt.Sprintf("kubectl create ns %s", namespace),
-		expectedString: fmt.Sprintf("namespace/%s created\n", namespace),
+		description: "Create test namespace",
+		cmd:         fmt.Sprintf("kubectl create ns %s", namespace),
+		verifyOutputCallback: func(output string) error {
+			return equalTo(output, fmt.Sprintf("namespace/%s created\n", namespace))
+		},
 	}
 }
 
@@ -318,10 +411,12 @@ func createTestNamespaceCommand(namespace string) *command {
 // name is given as parameter.
 func deleteTestNamespaceCommand(namespace string) *command {
 	return &command{
-		name:           "Delete test namespace",
-		cmd:            fmt.Sprintf("kubectl delete ns %s", namespace),
-		expectedString: fmt.Sprintf("namespace \"%s\" deleted\n", namespace),
-		cleanup:        true,
+		description: "Delete test namespace",
+		cmd:         fmt.Sprintf("kubectl delete ns %s", namespace),
+		cleanup:     true,
+		verifyOutputCallback: func(output string) error {
+			return equalTo(output, fmt.Sprintf("namespace \"%s\" deleted\n", namespace))
+		},
 	}
 }
 
@@ -329,8 +424,10 @@ func deleteTestNamespaceCommand(namespace string) *command {
 // the given as parameter namespace is ready.
 func waitUntilTestPodReadyCommand(namespace string) *command {
 	return &command{
-		name:           "Wait until test pod ready",
-		cmd:            fmt.Sprintf("kubectl wait pod --for condition=ready -n %s test-pod", namespace),
-		expectedString: "pod/test-pod condition met\n",
+		description: "Wait until test pod ready",
+		cmd:         fmt.Sprintf("kubectl wait pod --for condition=ready -n %s test-pod", namespace),
+		verifyOutputCallback: func(output string) error {
+			return equalTo(output, "pod/test-pod condition met\n")
+		},
 	}
 }
