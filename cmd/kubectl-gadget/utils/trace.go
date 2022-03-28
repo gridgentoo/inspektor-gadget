@@ -840,7 +840,7 @@ func RunTraceAndPrintStream(config *TraceConfig, transformLine func(string) stri
 
 	traceID, err := CreateTrace(config)
 	if err != nil {
-		return fmt.Errorf("error creating trace: %w", err)
+		return fmt.Errorf(" error creating trace: %w", err)
 	}
 
 	defer DeleteTrace(traceID)
