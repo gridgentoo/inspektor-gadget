@@ -19,9 +19,6 @@ import (
 	"fmt"
 	"strings"
 
-	dockertypes "github.com/docker/docker/api/types"
-	dockerfilters "github.com/docker/docker/api/types/filters"
-	dockerclient "github.com/docker/docker/client"
 	log "github.com/sirupsen/logrus"
 
 	v1 "k8s.io/api/core/v1"
@@ -41,68 +38,94 @@ import (
 	"github.com/kinvolk/inspektor-gadget/pkg/gadgettracermanager/pubsub"
 )
 
-// WithDockerEnrichment automatically adds container metadata with Docker
+// WithContainerRuntimeEnrichment automatically adds some container metadata
+// using the CRI or the Docker Engine API.
 //
-// ContainerCollection.ContainerCollectionInitialize(WithDockerEnrichment())
-func WithDockerEnrichment() ContainerCollectionOption {
+// ContainerCollection.ContainerCollectionInitialize(WithContainerRuntimeEnrichment())
+func WithContainerRuntimeEnrichment() ContainerCollectionOption {
 	return func(cc *ContainerCollection) error {
-		dockercli, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv)
+		// Already running containers
+		runtimeClient, err := containerutils.NewContainerRuntimeClient("")
 		if err != nil {
 			return err
 		}
 
-		// Already running containers
-		containers, err := dockercli.ContainerList(context.Background(),
-			dockertypes.ContainerListOptions{
-				All: true,
-			})
+		containers, err := runtimeClient.GetContainers("")
 		if err != nil {
 			return err
 		}
+
 		for _, container := range containers {
-			res, err := dockercli.ContainerInspect(context.Background(), container.ID)
+			if !container.Running {
+				log.Debugf("Runtime enricher: ignoring non running container: %s",
+					container.ID)
+				continue
+			}
+
+			pid, err := runtimeClient.PidFromContainerID(container.ID)
 			if err != nil {
-				log.Errorf("failed to inspect container %s: %s", container.ID, err)
+				log.Errorf("Runtime enricher: failed to get PID of container %s: %s",
+					container.ID, err)
 				continue
 			}
-			if !res.State.Running {
+			if pid == 0 {
+				log.Errorf("Runtime enricher: ignoring container with zero PID: %s",
+					container.ID)
 				continue
 			}
-			if res.State.Pid == 0 {
-				log.Errorf("failed to inspect container %s: container pid is 0", container.ID)
-				continue
-			}
-			pid := res.State.Pid
+
+			name := strings.TrimPrefix(container.Name, "/")
+
 			cc.initialContainers = append(cc.initialContainers,
 				&pb.ContainerDefinition{
-					Id:  container.ID,
-					Pid: uint32(pid),
+					Id:   container.ID,
+					Pid:  uint32(pid),
+					Name: name,
+
+					// Some gadgets require the namespace and pod name to be set
+					Namespace: "default",
+					Podname:   name,
 				})
 		}
 
 		// Future containers
 		cc.containerEnrichers = append(cc.containerEnrichers, func(container *pb.ContainerDefinition) bool {
-			filter := dockerfilters.NewArgs()
-			filter.Add("id", container.Id)
-			containers, err := dockercli.ContainerList(context.Background(),
-				dockertypes.ContainerListOptions{
-					All:     true,
-					Filters: filter,
-				})
-			if err != nil {
-				log.Errorf("failed to list container %s: %s", container.Id, err)
+			// Container already enriched
+			if container.Name != "" && container.Namespace != "" && container.Podname != "" {
 				return true
 			}
-			if len(containers) == 1 {
-				if len(containers[0].Names) > 0 {
-					container.Name = strings.TrimPrefix(containers[0].Names[0], "/")
+
+			containers, err := runtimeClient.GetContainers(container.Id)
+			if err != nil {
+				log.Debugf("Runtime enricher: failed to get container %s: %s",
+					container.Id, err)
+				return true
+			}
+
+			switch len(containers) {
+			case 0:
+				// Drop containers not visible by the container runtime. For
+				// instance, pause containers are not exposed by containerd.
+				log.Debugf("Runtime enricher: no containers found with ID %s",
+					container.Id)
+				return false
+			case 1:
+				name := strings.TrimPrefix(containers[0].Name, "/")
+				if len(name) > 0 {
+					// At this point, the container was already enriched with
+					// the PID by the hook
+					container.Name = name
+
 					// Some gadgets require the namespace and pod name to be set
 					container.Namespace = "default"
-					container.Podname = container.Name
+					container.Podname = name
 				}
-			} else {
-				log.Errorf("container %s has %d names", container.Id, len(containers))
+			default:
+				log.Errorf("Runtime enricher: container ID %s has multiples (%d) containers?",
+					container.Id, len(containers))
+				return false
 			}
+
 			return true
 		})
 		return nil

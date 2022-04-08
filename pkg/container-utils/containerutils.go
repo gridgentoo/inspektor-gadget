@@ -83,7 +83,7 @@ var ContainerRuntimes = []string{
 	crio.Name,
 }
 
-func NewContainerRuntimeClient(runtime string) (runtimeclient.ContainerRuntimeClient, error) {
+func initContainerRuntimeClient(runtime string) (runtimeclient.ContainerRuntimeClient, error) {
 	var runtimeClient runtimeclient.ContainerRuntimeClient
 
 	switch runtime {
@@ -104,6 +104,34 @@ func NewContainerRuntimeClient(runtime string) (runtimeclient.ContainerRuntimeCl
 	}
 
 	return runtimeClient, nil
+}
+
+func NewContainerRuntimeClient(runtime string) (runtimeclient.ContainerRuntimeClient, error) {
+	if runtime != "" {
+		return initContainerRuntimeClient(runtime)
+	}
+
+	// If we don't know the container runtime, we try with all of them and stop
+	// at the first successful connection.
+	// TODO: Support multiple runtimes. It could be useful for local-gadget.
+	var errs []string
+
+	for _, cri := range ContainerRuntimes {
+		runtimeClient, err := initContainerRuntimeClient(cri)
+		if err != nil {
+			errs = append(errs, fmt.Sprintf("failed to connect with runtime %q: %s",
+				cri, err))
+			continue
+		}
+
+		return runtimeClient, nil
+	}
+
+	if len(errs) == 0 {
+		return nil, fmt.Errorf("error getting runtime client: missing implementation")
+	}
+
+	return nil, fmt.Errorf("error getting runtime client:\n%s", strings.Join(errs, "\n"))
 }
 
 func CgroupPathV2AddMountpoint(path string) (string, error) {

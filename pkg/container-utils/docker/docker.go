@@ -22,6 +22,8 @@ import (
 	"regexp"
 	"time"
 
+	dockertypes "github.com/docker/docker/api/types"
+	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/client"
 	runtimeclient "github.com/kinvolk/inspektor-gadget/pkg/container-utils/runtime-client"
 )
@@ -59,7 +61,15 @@ func (c *DockerClient) Initialize() error {
 		return err
 	}
 
+	// Verify that we established the connection by making a simple call. It is
+	// useful when the CRI is not known a priori, and we are trying all of them.
+	_, err = cli.Ping(context.Background())
+	if err != nil {
+		return err
+	}
+
 	c.client = cli
+
 	return nil
 }
 
@@ -86,6 +96,38 @@ func (c *DockerClient) PidFromContainerID(containerID string) (int, error) {
 	}
 
 	return containerJSON.State.Pid, nil
+}
+
+func (c *DockerClient) GetContainers(containerID string) ([]*runtimeclient.ContainerData, error) {
+	var ret []*runtimeclient.ContainerData
+
+	filter := dockerfilters.NewArgs()
+	if containerID != "" {
+		filter.Add("id", containerID)
+	}
+
+	containers, err := c.client.ContainerList(context.Background(),
+		dockertypes.ContainerListOptions{
+			// We need to request for all containers (also non-running) because
+			// when we are enriching a container that is being created, it is
+			// not in "running" state yet.
+			All:     true,
+			Filters: filter,
+		})
+	if err != nil {
+		return ret, fmt.Errorf("failed to list containers with filter %+v: %w",
+			filter, err)
+	}
+
+	for _, container := range containers {
+		ret = append(ret, &runtimeclient.ContainerData{
+			ID:      container.ID,
+			Name:    container.Names[0],
+			Running: container.State == "running",
+		})
+	}
+
+	return ret, nil
 }
 
 func (c *DockerClient) Close() error {

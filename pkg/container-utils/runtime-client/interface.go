@@ -27,10 +27,24 @@ import (
 	pb "k8s.io/cri-api/pkg/apis/runtime/v1alpha2"
 )
 
+type ContainerData struct {
+	// ID is the container ID without the container runtime prefix. For
+	// instance, "cri-o://" for CRI-O.
+	ID string
+
+	// Name is the container name. In the case the container runtime response
+	// with multiples, Name contains only the first element.
+	Name string
+
+	// Running defines whether or not the container is in the running state
+	Running bool
+}
+
 // ContainerRuntimeClient defines the the interface to communicate with the
 // different container runtimes.
 type ContainerRuntimeClient interface {
-	// Initialize creates the client to communicate with the container runtime.
+	// Initialize creates the client to communicate with the container runtime
+	// and ensures that the connection was established.
 	Initialize() error
 
 	// PidFromContainerID returns the pid1 of the container identified by the
@@ -38,6 +52,12 @@ type ContainerRuntimeClient interface {
 	// retrieving the container information or parsing the response. Or, 0 if
 	// the pid is not present within the retrieved information.
 	PidFromContainerID(containerID string) (int, error)
+
+	// GetContainers returns a slice with the information of all the containers
+	// (not only running) or only the container identified by the provided ID.
+	// The container information is represented with the ContainerData data
+	// structure.
+	GetContainers(containerID string) ([]*ContainerData, error)
 
 	// Close tears down the connection with the client.
 	Close() error
@@ -66,8 +86,17 @@ func (c *CRIClient) Initialize() error {
 		return err
 	}
 
+	client := pb.NewRuntimeServiceClient(conn)
+
+	// Verify that we established the connection by making a simple call. It is
+	// useful when the CRI is not known a priori, and we are trying all of them.
+	_, err = client.Status(context.Background(), &pb.StatusRequest{})
+	if err != nil {
+		return err
+	}
+
 	c.conn = conn
-	c.client = pb.NewRuntimeServiceClient(conn)
+	c.client = client
 
 	return nil
 }
@@ -131,6 +160,32 @@ func (c *CRIClient) PidFromContainerID(containerID string) (int, error) {
 	}
 
 	return parseExtraInfo(res.Info)
+}
+
+func (c *CRIClient) GetContainers(containerID string) ([]*ContainerData, error) {
+	var ret []*ContainerData
+
+	request := &pb.ListContainersRequest{
+		Filter: &pb.ContainerFilter{
+			Id: containerID,
+		},
+	}
+
+	res, err := c.client.ListContainers(context.Background(), request)
+	if err != nil {
+		return ret, fmt.Errorf("failed to list containers after request %+v: %w",
+			request, err)
+	}
+
+	for _, container := range res.GetContainers() {
+		ret = append(ret, &ContainerData{
+			ID:      container.Id,
+			Name:    container.GetMetadata().Name,
+			Running: container.GetState() == pb.ContainerState_CONTAINER_RUNNING,
+		})
+	}
+
+	return ret, nil
 }
 
 func (c *CRIClient) Close() error {

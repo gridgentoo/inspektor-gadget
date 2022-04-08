@@ -314,7 +314,7 @@ func NewManager() (*LocalGadgetManager, error) {
 		containercollection.WithPubSub(containerEventFuncs...),
 		containercollection.WithCgroupEnrichment(),
 		containercollection.WithLinuxNamespaceEnrichment(),
-		containercollection.WithDockerEnrichment(),
+		containercollection.WithContainerRuntimeEnrichment(),
 		containercollection.WithRuncFanotify(),
 	)
 	if err != nil {
