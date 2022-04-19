@@ -28,6 +28,7 @@ import (
 	"github.com/spf13/cobra"
 
 	localgadgetmanager "github.com/kinvolk/inspektor-gadget/pkg/local-gadget-manager"
+	log "github.com/sirupsen/logrus"
 )
 
 // This variable is used by the "version" command and is set during build.
@@ -273,124 +274,151 @@ func newRootCmd() *cobra.Command {
 }
 
 func main() {
-	var err error
-	localGadgetManager, err = localgadgetmanager.NewManager()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	var verbose bool
 
-	homedir, err := os.UserHomeDir()
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
-	}
+	inlineCmd := &cobra.Command{
+		Use:          "local-gadget",
+		Short:        "Collection of gadgets for containers",
+		SilenceUsage: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if verbose {
+				log.StandardLogger().SetLevel(log.DebugLevel)
+			}
 
-	completer := readline.NewPrefixCompleter(
-		readline.PcItem("list-gadgets"),
-		readline.PcItem("list-containers"),
-		readline.PcItem("list-traces"),
-		readline.PcItem("create",
-			readline.PcItemDynamic(func(string) []string {
-				return localGadgetManager.ListGadgets()
-			},
-				readline.PcItemDynamic(func(string) []string {
-					n := len(localGadgetManager.ListTraces())
-					return []string{fmt.Sprintf("trace%d", n+1)}
-				},
-					readline.PcItem("--container-selector",
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var err error
+
+			localGadgetManager, err = localgadgetmanager.NewManager()
+			if err != nil {
+				return fmt.Errorf("failed to initialize manager: %w", err)
+			}
+
+			homedir, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to get user's home directory: %w", err)
+			}
+
+			completer := readline.NewPrefixCompleter(
+				readline.PcItem("list-gadgets"),
+				readline.PcItem("list-containers"),
+				readline.PcItem("list-traces"),
+				readline.PcItem("create",
+					readline.PcItemDynamic(func(string) []string {
+						return localGadgetManager.ListGadgets()
+					},
 						readline.PcItemDynamic(func(string) []string {
-							return localGadgetManager.ListContainers()
-						}),
+							n := len(localGadgetManager.ListTraces())
+							return []string{fmt.Sprintf("trace%d", n+1)}
+						},
+							readline.PcItem("--container-selector",
+								readline.PcItemDynamic(func(string) []string {
+									return localGadgetManager.ListContainers()
+								}),
+							),
+							readline.PcItem("--output-mode",
+								readline.PcItemDynamic(func(line string) []string {
+									fields := strings.Fields(line)
+									if len(fields) < 2 {
+										return []string{}
+									}
+									// TODO: this might select the wrong field if flags are placed elsewhere
+									gadget := fields[1]
+									outputModesSupported, err := localGadgetManager.GadgetOutputModesSupported(gadget)
+									if err != nil {
+										return nil
+									}
+									return outputModesSupported
+								}),
+							),
+						),
 					),
-					readline.PcItem("--output-mode",
+				),
+				readline.PcItem("operation",
+					readline.PcItemDynamic(func(string) []string {
+						return localGadgetManager.ListTraces()
+					},
 						readline.PcItemDynamic(func(line string) []string {
 							fields := strings.Fields(line)
 							if len(fields) < 2 {
 								return []string{}
 							}
 							// TODO: this might select the wrong field if flags are placed elsewhere
-							gadget := fields[1]
-							outputModesSupported, err := localGadgetManager.GadgetOutputModesSupported(gadget)
-							if err != nil {
-								return nil
-							}
-							return outputModesSupported
+							traceName := fields[1]
+							return localGadgetManager.ListOperations(traceName)
 						}),
 					),
 				),
-			),
-		),
-		readline.PcItem("operation",
-			readline.PcItemDynamic(func(string) []string {
-				return localGadgetManager.ListTraces()
-			},
-				readline.PcItemDynamic(func(line string) []string {
-					fields := strings.Fields(line)
-					if len(fields) < 2 {
-						return []string{}
+				readline.PcItem("show",
+					readline.PcItemDynamic(func(string) []string {
+						return localGadgetManager.ListTraces()
+					}),
+				),
+				readline.PcItem("stream",
+					readline.PcItemDynamic(func(string) []string {
+						return localGadgetManager.ListTraces()
+					},
+						readline.PcItem("--follow"),
+					),
+				),
+				readline.PcItem("delete",
+					readline.PcItemDynamic(func(string) []string {
+						return localGadgetManager.ListTraces()
+					}),
+				),
+				readline.PcItem("dump"),
+				readline.PcItem("version"),
+				readline.PcItem("exit"),
+				readline.PcItem("help"),
+			)
+
+			l, err := readline.NewEx(&readline.Config{
+				Prompt:          "\033[31m»\033[0m ",
+				HistoryFile:     filepath.Join(homedir, ".local-gadget.history"),
+				AutoComplete:    completer,
+				InterruptPrompt: "^C",
+				EOFPrompt:       "exit",
+			})
+			if err != nil {
+				return fmt.Errorf("failed to initialize reader: %w", err)
+			}
+			defer l.Close()
+
+			for {
+				input, err := l.Readline()
+				if errors.Is(err, readline.ErrInterrupt) {
+					if len(input) == 0 {
+						break
 					}
-					// TODO: this might select the wrong field if flags are placed elsewhere
-					traceName := fields[1]
-					return localGadgetManager.ListOperations(traceName)
-				}),
-			),
-		),
-		readline.PcItem("show",
-			readline.PcItemDynamic(func(string) []string {
-				return localGadgetManager.ListTraces()
-			}),
-		),
-		readline.PcItem("stream",
-			readline.PcItemDynamic(func(string) []string {
-				return localGadgetManager.ListTraces()
-			},
-				readline.PcItem("--follow"),
-			),
-		),
-		readline.PcItem("delete",
-			readline.PcItemDynamic(func(string) []string {
-				return localGadgetManager.ListTraces()
-			}),
-		),
-		readline.PcItem("dump"),
-		readline.PcItem("version"),
-		readline.PcItem("exit"),
-		readline.PcItem("help"),
+					continue
+				} else if errors.Is(err, io.EOF) {
+					break
+				}
+
+				input = strings.TrimSpace(input)
+				if input == "" {
+					continue
+				}
+
+				if err = execInput(input); err != nil {
+					fmt.Fprintln(os.Stderr, err)
+				}
+			}
+
+			return nil
+		},
+	}
+
+	inlineCmd.PersistentFlags().BoolVarP(
+		&verbose,
+		"verbose", "v",
+		false,
+		"Print debug information",
 	)
 
-	l, err := readline.NewEx(&readline.Config{
-		Prompt:          "\033[31m»\033[0m ",
-		HistoryFile:     filepath.Join(homedir, ".local-gadget.history"),
-		AutoComplete:    completer,
-		InterruptPrompt: "^C",
-		EOFPrompt:       "exit",
-	})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	if err := inlineCmd.Execute(); err != nil {
 		os.Exit(1)
-	}
-	defer l.Close()
-
-	for {
-		input, err := l.Readline()
-		if errors.Is(err, readline.ErrInterrupt) {
-			if len(input) == 0 {
-				break
-			}
-			continue
-		} else if errors.Is(err, io.EOF) {
-			break
-		}
-
-		input = strings.TrimSpace(input)
-		if input == "" {
-			continue
-		}
-
-		if err = execInput(input); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-		}
 	}
 }
 
