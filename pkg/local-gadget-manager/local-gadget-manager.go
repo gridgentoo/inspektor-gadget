@@ -16,6 +16,7 @@ package localgadgetmanager
 
 import (
 	"fmt"
+	"os/exec"
 	"sort"
 	"strings"
 
@@ -27,6 +28,7 @@ import (
 	containersmap "github.com/kinvolk/inspektor-gadget/pkg/gadgettracermanager/containers-map"
 	"github.com/kinvolk/inspektor-gadget/pkg/gadgettracermanager/pubsub"
 	tracercollection "github.com/kinvolk/inspektor-gadget/pkg/tracer-collection"
+	log "github.com/sirupsen/logrus"
 
 	"github.com/cilium/ebpf"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -300,6 +302,25 @@ func NewManager() (*LocalGadgetManager, error) {
 
 	if _, err := ebpf.RemoveMemlockRlimit(); err != nil {
 		return nil, err
+	}
+
+	// Ensure /sys/fs/bpf is of type bpf. It is necessary to be able to pin eBPF
+	// maps. TODO: Remove the need of using pinning. See issue #XXX.
+	cmd := exec.Command("/bin/sh", "-c", "stat -f --format=%T /sys/fs/bpf")
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("error checking type of /sys/fs/bpf (%s): %w",
+			cmd.String(), err)
+	}
+	fsType := strings.TrimSpace(string(output))
+	if fsType != "bpf_fs" {
+		log.Infof("/sys/fs/bpf is of type %s. Remounting with type bpf", fsType)
+
+		cmd := exec.Command("/bin/sh", "-c", "mount -t bpf bpf /sys/fs/bpf/")
+		err := cmd.Run()
+		if err != nil {
+			return nil, fmt.Errorf("error remounting /sys/fs/bpf as bpf: %w", err)
+		}
 	}
 
 	l.containersMap, err = containersmap.NewContainersMap(gadgets.PinPath)
