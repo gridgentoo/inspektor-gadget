@@ -141,6 +141,8 @@ func printTraceFeedback(prefix string, m map[string]string, totalNodes int) {
 }
 
 func deleteTraces(traceClient *clientset.Clientset, traceID string) {
+	fmt.Fprintf(os.Stderr, "DeleteTraces\n")
+
 	listTracesOptions := metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("%s=%s", GlobalTraceID, traceID),
 	}
@@ -200,6 +202,8 @@ func createTraces(trace *gadgetv1alpha1.Trace) error {
 		if traceNode == "" {
 			trace.Spec.Node = node.Name
 		}
+
+		fmt.Fprintf(os.Stderr, "CrateTrace\n\tNode: %q\n\tAnnotations: %q\n", trace.Spec.Node, trace.Annotations)
 
 		_, err := traceClient.GadgetV1alpha1().Traces("gadget").Create(
 			context.TODO(), trace, metav1.CreateOptions{},
@@ -387,6 +391,7 @@ func SetTraceOperation(traceID string, operation string) error {
 	}
 
 	for _, trace := range traces.Items {
+		fmt.Fprintf(os.Stderr, "SetTraceOperation\n\tNode: %q\n\tOperation: %q\n", trace.Spec.Node, operation)
 		localError := updateTraceOperation(&trace, operation)
 		if localError != nil {
 			err = fmt.Errorf("%w\nError updating trace operation for %q: %s", err, traceID, localError)
@@ -479,28 +484,43 @@ func waitForCondition(traceID string, conditionFunction func(*gadgetv1alpha1.Tra
 		return nil, err
 	}
 
+	tracesNumber := len(traceList.Items)
+
 	// Maybe some traces already satisfy conditionFunction?
 	for i, trace := range traceList.Items {
+		fmt.Fprintf(os.Stderr, "Verify first if trace is already ready:\n\tNode: %q\n\tState: %q\n\tOperationError: %q\n\tAnnotations: %v\n\tResourceVersion: %v\n",
+			trace.Spec.Node, trace.Status.State, trace.Status.OperationError, trace.Annotations, trace.ResourceVersion)
+
 		if trace.Status.OperationWarning != "" {
 			// The trace can have a warning but satisfies conditionFunction.
 			// So, we do not add it to the map here.
 			nodeWarnings[trace.Spec.Node] = trace.Status.OperationWarning
+
+			fmt.Fprintf(os.Stderr, "\tOperationWarning found\n\tValue: %s\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+				trace.Status.OperationWarning, tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
 		}
 
 		if trace.Status.OperationError != "" {
 			erroredTraces[trace.ObjectMeta.Name] = &traceList.Items[i]
 
+			fmt.Fprintf(os.Stderr, "\tOperationError found\n\tValue: %s\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+				trace.Status.OperationError, tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
+
 			continue
 		}
 
 		if !conditionFunction(&trace) {
+			fmt.Fprintf(os.Stderr, "\tCondition ready: FALSE\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+				tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
+
 			continue
 		}
 
 		satisfiedTraces[trace.ObjectMeta.Name] = &traceList.Items[i]
-	}
 
-	tracesNumber := len(traceList.Items)
+		fmt.Fprintf(os.Stderr, "\tCondition ready: TRUE\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+			tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
+	}
 
 	// We only watch the traces if there are some which did not already satisfy
 	// the conditionFunction.
@@ -520,8 +540,16 @@ func waitForCondition(traceID string, conditionFunction func(*gadgetv1alpha1.Tra
 			return nil, err
 		}
 
+		fmt.Fprintf(os.Stderr, "Start watching:\n\tListResourceVersion: %v\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+			traceList.ListMeta.ResourceVersion, tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
+
 		ctx, cancel := watchtools.ContextWithOptionalTimeout(context.Background(), TraceTimeout)
 		_, err = untilWithoutRetry(ctx, watcher, func(event watch.Event) (bool, error) {
+			trace, _ := event.Object.(*gadgetv1alpha1.Trace)
+
+			fmt.Fprintf(os.Stderr, "New event (type %v):\n\tNode: %q\n\tState: %q\n\tOperationError: %q\n\tAnnotations: %v\n\tResourceVersion: %v\n\ttracesNumber: %v\n",
+				event.Type, trace.Spec.Node, trace.Status.State, trace.Status.OperationError, trace.Annotations, trace.ResourceVersion, tracesNumber)
+
 			// This function will be executed until:
 			// 1. The number of watched traces equals the number of traces to watch,
 			// i.e. we dealt with the traces which interest us.
@@ -538,7 +566,6 @@ func waitForCondition(traceID string, conditionFunction func(*gadgetv1alpha1.Tra
 				// timeout.
 				tracesNumber--
 
-				trace, _ := event.Object.(*gadgetv1alpha1.Trace)
 				traceName := trace.ObjectMeta.Name
 
 				// We also remove it from the maps to avoid returning a deleted trace
@@ -563,12 +590,13 @@ func waitForCondition(traceID string, conditionFunction func(*gadgetv1alpha1.Tra
 				return false, nil
 			}
 
-			trace, _ := event.Object.(*gadgetv1alpha1.Trace)
-
 			if trace.Status.OperationWarning != "" {
 				// The trace can have a warning but satisfies conditionFunction.
 				// So, we do not add it to the map here.
 				nodeWarnings[trace.Spec.Node] = trace.Status.OperationWarning
+
+				fmt.Fprintf(os.Stderr, "\tOperationWarning found\n\tValue: %s\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+					trace.Status.OperationWarning, tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
 			}
 
 			if trace.Status.OperationError != "" {
@@ -578,16 +606,25 @@ func waitForCondition(traceID string, conditionFunction func(*gadgetv1alpha1.Tra
 				// has an error.
 				delete(satisfiedTraces, trace.ObjectMeta.Name)
 
+				fmt.Fprintf(os.Stderr, "\tOperationError found\n\tValue: %s\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+					trace.Status.OperationError, tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
+
 				return len(satisfiedTraces)+len(erroredTraces) == tracesNumber, nil
 			}
 
 			// If the trace does not satisfy the condition function, we are not
 			// interested.
 			if !conditionFunction(trace) {
+				fmt.Fprintf(os.Stderr, "\tCondition ready: FALSE\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+					tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
+
 				return false, nil
 			}
 
 			satisfiedTraces[trace.ObjectMeta.Name] = trace
+
+			fmt.Fprintf(os.Stderr, "\tCondition ready: TRUE\n\ttracesNumber %v vs %v (satisfiedTraces %v + erroredTraces %v)\n",
+				tracesNumber, len(satisfiedTraces)+len(erroredTraces), len(satisfiedTraces), len(erroredTraces))
 
 			return len(satisfiedTraces)+len(erroredTraces) == tracesNumber, nil
 		})
@@ -620,6 +657,7 @@ func waitForCondition(traceID string, conditionFunction func(*gadgetv1alpha1.Tra
 // waitForTraceState waits for the traces with the ID received as parameter to
 // be in the expected state.
 func waitForTraceState(traceID string, expectedState string) (*gadgetv1alpha1.TraceList, error) {
+	fmt.Fprintf(os.Stderr, "WaitForTraceState: %s\n", expectedState)
 	return waitForCondition(traceID, func(trace *gadgetv1alpha1.Trace) bool {
 		return trace.Status.State == expectedState
 	})
@@ -628,6 +666,7 @@ func waitForTraceState(traceID string, expectedState string) (*gadgetv1alpha1.Tr
 // waitForNoOperation waits for the traces with the ID received as parameter to
 // not have an operation.
 func waitForNoOperation(traceID string) (*gadgetv1alpha1.TraceList, error) {
+	fmt.Fprintf(os.Stderr, "WaitForEmptyAnnotations\n")
 	return waitForCondition(traceID, func(trace *gadgetv1alpha1.Trace) bool {
 		if trace.ObjectMeta.Annotations == nil {
 			return true
