@@ -38,6 +38,20 @@ runs:
         tar zxvf /home/runner/work/inspektor-gadget/kubectl-gadget-linux-amd64.tar.gz
         mv kubectl-gadget kubectl-gadget-linux-amd64
 
+        # Notify the ig-integration-tests container that the workflow run
+        # was cancelled so that it can undeploy Inspektor Gadget and SPO
+        cleanup() { \
+            echo "Workflow run was cancelled. Signal: $1"; \
+            trap - SIGINT SIGTERM SIGHUP; \
+            docker kill --signal="SIGINT" ig-integration-tests; \
+            docker wait ig-integration-tests; \
+            exit 0; \
+        }
+
+        trap 'cleanup SIGINT' SIGINT
+        trap 'cleanup SIGTERM' SIGTERM
+        trap 'cleanup SIGHUP' SIGHUP
+
         TESTS_DOCKER_ARGS="-e KUBECONFIG=/root/.kube/config -v /home/runner/.kube:/root/.kube -v /home/runner/work/_temp/.minikube:/home/runner/work/_temp/.minikube" \
             make -C integration build test
 

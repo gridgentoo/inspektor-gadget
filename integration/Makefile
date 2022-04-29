@@ -1,7 +1,7 @@
 CONTAINER_REPO ?= docker.io/kinvolk/gadget
 IMAGE_TAG ?= $(shell ./tools/image-tag branch)
 
-TESTS_DOCKER_ARGS ?= "-e KUBECONFIG=/opt/kubeconfig/config -v $(HOME)/.kube:/opt/kubeconfig"
+TESTS_DOCKER_ARGS ?= -e KUBECONFIG=/opt/kubeconfig/config -v $(HOME)/.kube:/opt/kubeconfig
 
 KUBERNETES_DISTRIBUTION ?= ""
 
@@ -21,13 +21,13 @@ push:
 test:
 	if [ "x$(KUBECONFIG)" = "x" ] ; then \
 		echo "Running tests without KUBECONFIG variable" ; \
-		docker run --rm -i \
+		docker run --rm -i --name ig-integration-tests \
 			--net=host \
 			$(TESTS_DOCKER_ARGS) \
 			$(CONTAINER_REPO)test:$(IMAGE_TAG) ; \
 	else \
 		echo "Running tests with KUBECONFIG = $(KUBECONFIG)" ; \
-		docker run --rm -i \
+		docker run --rm -i --name ig-integration-tests \
 			--net=host \
 			-e KUBECONFIG=/opt/kubeconfig/$(shell basename "$(KUBECONFIG)") \
 			-v $(shell dirname "$(KUBECONFIG)"):/opt/kubeconfig \

@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"math/rand"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -113,13 +115,12 @@ func testMain(m *testing.M) int {
 	fmt.Printf("using random seed: %d\n", seed)
 
 	initCommands := []*command{}
+	cleanupCommands := []*command{}
 
 	if !*doNotDeploySPO {
 		initCommands = append(initCommands, deploySPO)
-		defer func() {
-			fmt.Printf("Clean SPO:\n")
-			cleanupSPO.runWithoutTest()
-		}()
+
+		cleanupCommands = append(cleanupCommands, cleanupSPO)
 	}
 
 	if !*doNotDeployIG {
@@ -136,13 +137,31 @@ func testMain(m *testing.M) int {
 		initCommands = append(initCommands, waitUntilInspektorGadgetPodsDeployed)
 		initCommands = append(initCommands, waitUntilInspektorGadgetPodsInitialized(initialDelay))
 
-		// defer the cleanup to be sure it's called if the test
-		// fails (hence calling runtime.Goexit())
-		defer func() {
-			fmt.Printf("Clean inspektor-gadget:\n")
-			cleanupInspektorGadget.runWithoutTest()
-		}()
+		cleanupCommands = append(cleanupCommands, cleanupInspektorGadget)
 	}
+
+	cleanupFunc := func() {
+		fmt.Printf("Cleaning up...\n")
+
+		for _, cmd := range cleanupCommands {
+			err := cmd.runWithoutTest()
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "%v\n", err)
+			}
+		}
+	}
+
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGINT)
+	go func() {
+		<-c
+		cleanupFunc()
+		os.Exit(0)
+	}()
+
+	// Defer the cleanupFunc() to be sure it's called if the test fails (hence
+	// calling runtime.Goexit())
+	defer cleanupFunc()
 
 	fmt.Printf("Running init commands:\n")
 	for _, cmd := range initCommands {
