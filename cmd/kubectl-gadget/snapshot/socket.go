@@ -38,26 +38,35 @@ var (
 var socketCollectorCmd = &cobra.Command{
 	Use:   "socket",
 	Short: "Gather information about TCP and UDP sockets",
+	PreRunE: func(cmd *cobra.Command, args []string) error {
+		if _, err := types.ParseProtocol(socketCollectorProtocol); err != nil {
+			return err
+		}
+
+		return nil
+	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		callback := func(results []gadgetv1alpha1.Trace) error {
-			allSockets := []types.Event{}
+			allEvents := []types.Event{}
 
 			for _, i := range results {
 				if len(i.Status.Output) == 0 {
 					continue
 				}
 
-				var sockets []types.Event
-				if err := json.Unmarshal([]byte(i.Status.Output), &sockets); err != nil {
+				var events []types.Event
+				if err := json.Unmarshal([]byte(i.Status.Output), &events); err != nil {
 					return utils.WrapInErrUnmarshalOutput(err, i.Status.Output)
 				}
 
-				allSockets = append(allSockets, sockets...)
+				allEvents = append(allEvents, events...)
 			}
+
+			sortSockets(allEvents)
 
 			// JSON output mode does not need any additional parsing
 			if params.OutputMode == utils.OutputModeJSON {
-				b, err := json.MarshalIndent(allSockets, "", "  ")
+				b, err := json.MarshalIndent(allEvents, "", "  ")
 				if err != nil {
 					return utils.WrapInErrMarshalOutput(err)
 				}
@@ -65,11 +74,11 @@ var socketCollectorCmd = &cobra.Command{
 				return nil
 			}
 
-			// In the snapshot gadgets it's possible to use a tabwriter because we have
-			// the full list of events to print available, hence the tablewriter is able
-			// to determine the columns width. In other gadgets we don't know the size
-			// of all columns "a priori", hence we have to do a best effort printing
-			// fixed-width columns.
+			// In the snapshot gadgets it's possible to use a tabwriter because
+			// we have the full list of events to print available, hence the
+			// tablewriter is able to determine the columns width. In other
+			// gadgets we don't know the size of all columns "a priori", hence
+			// we have to do a best effort printing fixed-width columns.
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
 
 			// Print all or requested columns
@@ -77,24 +86,16 @@ var socketCollectorCmd = &cobra.Command{
 			case utils.OutputModeCustomColumns:
 				fmt.Fprintln(w, getCustomSocketColsHeader(params.CustomColumns))
 			case utils.OutputModeColumns:
-				extendedHeader := ""
-				if socketCollectorParamExtended {
-					extendedHeader = "\tINODE"
-				}
-				fmt.Fprintf(w, "NODE\tNAMESPACE\tPOD\tPROTOCOL\tLOCAL\tREMOTE\tSTATUS%s\n", extendedHeader)
+				fmt.Fprintln(w, getSocketColsHeader())
 			}
 
-			for _, s := range allSockets {
-				fmt.Fprintln(w, socketTransformEvent(s))
+			for _, e := range allEvents {
+				fmt.Fprintln(w, socketTransformEvent(e))
 			}
 
 			w.Flush()
 
 			return nil
-		}
-
-		if _, err := types.ParseProtocol(socketCollectorProtocol); err != nil {
-			return err
 		}
 
 		config := &utils.TraceConfig{
@@ -135,6 +136,14 @@ func init() {
 		false,
 		"Display other/more information (like socket inode)",
 	)
+}
+
+func getSocketColsHeader() string {
+	extendedHeader := ""
+	if socketCollectorParamExtended {
+		extendedHeader = "\tINODE"
+	}
+	return fmt.Sprintf("NODE\tNAMESPACE\tPOD\tPROTOCOL\tLOCAL\tREMOTE\tSTATUS%s\n", extendedHeader)
 }
 
 func getCustomSocketColsHeader(cols []string) string {

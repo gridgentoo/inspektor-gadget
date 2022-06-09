@@ -37,26 +37,26 @@ var processCollectorCmd = &cobra.Command{
 	Short: "Gather information about running processes",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		callback := func(results []gadgetv1alpha1.Trace) error {
-			allProcesses := []types.Event{}
+			allEvents := []types.Event{}
 
 			for _, i := range results {
 				if len(i.Status.Output) == 0 {
 					continue
 				}
 
-				var processes []types.Event
-				if err := json.Unmarshal([]byte(i.Status.Output), &processes); err != nil {
+				var events []types.Event
+				if err := json.Unmarshal([]byte(i.Status.Output), &events); err != nil {
 					return utils.WrapInErrUnmarshalOutput(err, i.Status.Output)
 				}
 
-				allProcesses = append(allProcesses, processes...)
+				allEvents = append(allEvents, events...)
 			}
 
-			sortProcesses(allProcesses)
+			sortProcesses(allEvents)
 
 			// JSON output mode does not need any additional parsing
 			if params.OutputMode == utils.OutputModeJSON {
-				b, err := json.MarshalIndent(allProcesses, "", "  ")
+				b, err := json.MarshalIndent(allEvents, "", "  ")
 				if err != nil {
 					return utils.WrapInErrMarshalOutput(err)
 				}
@@ -64,11 +64,11 @@ var processCollectorCmd = &cobra.Command{
 				return nil
 			}
 
-			// In the snapshot gadgets it's possible to use a tabwriter because we have
-			// the full list of events to print available, hence the tablewriter is able
-			// to determine the columns width. In other gadgets we don't know the size
-			// of all columns "a priori", hence we have to do a best effort printing
-			// fixed-width columns.
+			// In the snapshot gadgets it's possible to use a tabwriter because
+			// we have the full list of events to print available, hence the
+			// tablewriter is able to determine the columns width. In other
+			// gadgets we don't know the size of all columns "a priori", hence
+			// we have to do a best effort printing fixed-width columns.
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
 
 			// Print all or requested columns
@@ -76,15 +76,11 @@ var processCollectorCmd = &cobra.Command{
 			case utils.OutputModeCustomColumns:
 				fmt.Fprintln(w, getCustomProcessColsHeader(params.CustomColumns))
 			case utils.OutputModeColumns:
-				if processCollectorParamThreads {
-					fmt.Fprintln(w, "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tTGID\tPID")
-				} else {
-					fmt.Fprintln(w, "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tPID")
-				}
+				fmt.Fprintln(w, getProcessColsHeader())
 			}
 
-			for _, p := range allProcesses {
-				fmt.Fprintln(w, processTransformEvent(p))
+			for _, e := range allEvents {
+				fmt.Fprintln(w, processTransformEvent(e))
 			}
 
 			w.Flush()
@@ -115,6 +111,14 @@ func init() {
 		false,
 		"Show all threads",
 	)
+}
+
+func getProcessColsHeader() string {
+	if processCollectorParamThreads {
+		return "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tTGID\tPID"
+	} else {
+		return "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tPID"
+	}
 }
 
 func getCustomProcessColsHeader(cols []string) string {
