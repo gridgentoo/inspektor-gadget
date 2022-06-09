@@ -55,7 +55,42 @@ var socketCollectorCmd = &cobra.Command{
 				allSockets = append(allSockets, sockets...)
 			}
 
-			return printSockets(allSockets)
+			// JSON output mode does not need any additional parsing
+			if params.OutputMode == utils.OutputModeJSON {
+				b, err := json.MarshalIndent(allSockets, "", "  ")
+				if err != nil {
+					return utils.WrapInErrMarshalOutput(err)
+				}
+				fmt.Printf("%s\n", b)
+				return nil
+			}
+
+			// In the snapshot gadgets it's possible to use a tabwriter because we have
+			// the full list of events to print available, hence the tablewriter is able
+			// to determine the columns width. In other gadgets we don't know the size
+			// of all columns "a priori", hence we have to do a best effort printing
+			// fixed-width columns.
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
+
+			// Print all or requested columns
+			switch params.OutputMode {
+			case utils.OutputModeCustomColumns:
+				fmt.Fprintln(w, getCustomSocketColsHeader(params.CustomColumns))
+			case utils.OutputModeColumns:
+				extendedHeader := ""
+				if socketCollectorParamExtended {
+					extendedHeader = "\tINODE"
+				}
+				fmt.Fprintf(w, "NODE\tNAMESPACE\tPOD\tPROTOCOL\tLOCAL\tREMOTE\tSTATUS%s\n", extendedHeader)
+			}
+
+			for _, s := range allSockets {
+				fmt.Fprintln(w, socketTransformEvent(s))
+			}
+
+			w.Flush()
+
+			return nil
 		}
 
 		if _, err := types.ParseProtocol(socketCollectorProtocol); err != nil {
@@ -178,7 +213,7 @@ func socketTransformEvent(e types.Event) string {
 	return sb.String()
 }
 
-func printSockets(allSockets []types.Event) error {
+func sortSockets(allSockets []types.Event) {
 	sort.Slice(allSockets, func(i, j int) bool {
 		si, sj := allSockets[i], allSockets[j]
 		switch {
@@ -204,41 +239,4 @@ func printSockets(allSockets []types.Event) error {
 			return si.InodeNumber < sj.InodeNumber
 		}
 	})
-
-	// JSON output mode does not need any additional parsing
-	if params.OutputMode == utils.OutputModeJSON {
-		b, err := json.MarshalIndent(allSockets, "", "  ")
-		if err != nil {
-			return utils.WrapInErrMarshalOutput(err)
-		}
-		fmt.Printf("%s\n", b)
-		return nil
-	}
-
-	// In the snapshot gadgets it's possible to use a tabwriter because we have
-	// the full list of events to print available, hence the tablewriter is able
-	// to determine the columns width. In other gadgets we don't know the size
-	// of all columns "a priori", hence we have to do a best effort printing
-	// fixed-width columns.
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
-
-	// Print all or requested columns
-	switch params.OutputMode {
-	case utils.OutputModeCustomColumns:
-		fmt.Fprintln(w, getCustomSocketColsHeader(params.CustomColumns))
-	case utils.OutputModeColumns:
-		extendedHeader := ""
-		if socketCollectorParamExtended {
-			extendedHeader = "\tINODE"
-		}
-		fmt.Fprintf(w, "NODE\tNAMESPACE\tPOD\tPROTOCOL\tLOCAL\tREMOTE\tSTATUS%s\n", extendedHeader)
-	}
-
-	for _, s := range allSockets {
-		fmt.Fprintln(w, socketTransformEvent(s))
-	}
-
-	w.Flush()
-
-	return nil
 }

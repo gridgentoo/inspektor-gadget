@@ -52,7 +52,44 @@ var processCollectorCmd = &cobra.Command{
 				allProcesses = append(allProcesses, processes...)
 			}
 
-			return printProcesses(allProcesses)
+			sortProcesses(allProcesses)
+
+			// JSON output mode does not need any additional parsing
+			if params.OutputMode == utils.OutputModeJSON {
+				b, err := json.MarshalIndent(allProcesses, "", "  ")
+				if err != nil {
+					return utils.WrapInErrMarshalOutput(err)
+				}
+				fmt.Printf("%s\n", b)
+				return nil
+			}
+
+			// In the snapshot gadgets it's possible to use a tabwriter because we have
+			// the full list of events to print available, hence the tablewriter is able
+			// to determine the columns width. In other gadgets we don't know the size
+			// of all columns "a priori", hence we have to do a best effort printing
+			// fixed-width columns.
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
+
+			// Print all or requested columns
+			switch params.OutputMode {
+			case utils.OutputModeCustomColumns:
+				fmt.Fprintln(w, getCustomProcessColsHeader(params.CustomColumns))
+			case utils.OutputModeColumns:
+				if processCollectorParamThreads {
+					fmt.Fprintln(w, "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tTGID\tPID")
+				} else {
+					fmt.Fprintln(w, "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tPID")
+				}
+			}
+
+			for _, p := range allProcesses {
+				fmt.Fprintln(w, processTransformEvent(p))
+			}
+
+			w.Flush()
+
+			return nil
 		}
 
 		config := &utils.TraceConfig{
@@ -152,7 +189,7 @@ func processTransformEvent(e types.Event) string {
 	return sb.String()
 }
 
-func printProcesses(allProcesses []types.Event) error {
+func sortProcesses(allProcesses []types.Event) {
 	if !processCollectorParamThreads {
 		allProcessesTrimmed := []types.Event{}
 		for _, i := range allProcesses {
@@ -182,41 +219,4 @@ func printProcesses(allProcesses []types.Event) error {
 			return pi.Pid < pj.Pid
 		}
 	})
-
-	// JSON output mode does not need any additional parsing
-	if params.OutputMode == utils.OutputModeJSON {
-		b, err := json.MarshalIndent(allProcesses, "", "  ")
-		if err != nil {
-			return utils.WrapInErrMarshalOutput(err)
-		}
-		fmt.Printf("%s\n", b)
-		return nil
-	}
-
-	// In the snapshot gadgets it's possible to use a tabwriter because we have
-	// the full list of events to print available, hence the tablewriter is able
-	// to determine the columns width. In other gadgets we don't know the size
-	// of all columns "a priori", hence we have to do a best effort printing
-	// fixed-width columns.
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
-
-	// Print all or requested columns
-	switch params.OutputMode {
-	case utils.OutputModeCustomColumns:
-		fmt.Fprintln(w, getCustomProcessColsHeader(params.CustomColumns))
-	case utils.OutputModeColumns:
-		if processCollectorParamThreads {
-			fmt.Fprintln(w, "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tTGID\tPID")
-		} else {
-			fmt.Fprintln(w, "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tPID")
-		}
-	}
-
-	for _, p := range allProcesses {
-		fmt.Fprintln(w, processTransformEvent(p))
-	}
-
-	w.Flush()
-
-	return nil
 }
