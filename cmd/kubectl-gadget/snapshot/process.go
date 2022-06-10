@@ -15,17 +15,13 @@
 package snapshot
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
 	"github.com/kinvolk/inspektor-gadget/cmd/kubectl-gadget/utils"
-	gadgetv1alpha1 "github.com/kinvolk/inspektor-gadget/pkg/apis/gadget/v1alpha1"
 	"github.com/kinvolk/inspektor-gadget/pkg/gadgets/process-collector/types"
 	eventtypes "github.com/kinvolk/inspektor-gadget/pkg/types"
 )
@@ -36,58 +32,6 @@ var processCollectorCmd = &cobra.Command{
 	Use:   "process",
 	Short: "Gather information about running processes",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		callback := func(results []gadgetv1alpha1.Trace) error {
-			allEvents := []types.Event{}
-
-			for _, i := range results {
-				if len(i.Status.Output) == 0 {
-					continue
-				}
-
-				var events []types.Event
-				if err := json.Unmarshal([]byte(i.Status.Output), &events); err != nil {
-					return utils.WrapInErrUnmarshalOutput(err, i.Status.Output)
-				}
-
-				allEvents = append(allEvents, events...)
-			}
-
-			sortProcesses(allEvents)
-
-			// JSON output mode does not need any additional parsing
-			if params.OutputMode == utils.OutputModeJSON {
-				b, err := json.MarshalIndent(allEvents, "", "  ")
-				if err != nil {
-					return utils.WrapInErrMarshalOutput(err)
-				}
-				fmt.Printf("%s\n", b)
-				return nil
-			}
-
-			// In the snapshot gadgets it's possible to use a tabwriter because
-			// we have the full list of events to print available, hence the
-			// tablewriter is able to determine the columns width. In other
-			// gadgets we don't know the size of all columns "a priori", hence
-			// we have to do a best effort printing fixed-width columns.
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
-
-			// Print all or requested columns
-			switch params.OutputMode {
-			case utils.OutputModeCustomColumns:
-				fmt.Fprintln(w, getCustomProcessColsHeader(params.CustomColumns))
-			case utils.OutputModeColumns:
-				fmt.Fprintln(w, getProcessColsHeader())
-			}
-
-			for _, e := range allEvents {
-				fmt.Fprintln(w, processTransformEvent(e))
-			}
-
-			w.Flush()
-
-			return nil
-		}
-
 		config := &utils.TraceConfig{
 			GadgetName:       "process-collector",
 			Operation:        "collect",
@@ -96,7 +40,8 @@ var processCollectorCmd = &cobra.Command{
 			CommonFlags:      &params,
 		}
 
-		return utils.RunTraceAndPrintStatusOutput(config, callback)
+		return utils.RunTraceAndPrintStatusOutput(config,
+			getSnapshotCallback(sortProcesses, getProcessColsHeader, processTransformEvent))
 	},
 }
 
@@ -113,17 +58,16 @@ func init() {
 	)
 }
 
-func getProcessColsHeader() string {
-	if processCollectorParamThreads {
-		return "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tTGID\tPID"
-	} else {
-		return "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tPID"
+func getProcessColsHeader(cols []string) string {
+	if len(cols) == 0 {
+		if processCollectorParamThreads {
+			return "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tTGID\tPID"
+		} else {
+			return "NODE\tNAMESPACE\tPOD\tCONTAINER\tCOMM\tPID"
+		}
 	}
-}
 
-func getCustomProcessColsHeader(cols []string) string {
 	var sb strings.Builder
-
 	for _, col := range cols {
 		switch col {
 		case "node":
