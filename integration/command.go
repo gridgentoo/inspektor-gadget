@@ -139,7 +139,7 @@ fi
 # At this point, the webhook and daemon were created, wait til they are ready.
 kubectl -n security-profiles-operator wait deploy security-profiles-operator-webhook --for condition=available || \
   (kubectl get pod -n security-profiles-operator ; kubectl get events -n security-profiles-operator ; false)
-kubectl rollout status -n security-profiles-operator ds spod --timeout=120s || \
+kubectl rollout status -n security-profiles-operator ds spod --timeout=150s || \
   (kubectl get pod -n security-profiles-operator ; kubectl get events -n security-profiles-operator ; false)
 `, limitReplicas, bestEffortResourceMgmt)
 	return &command{
