@@ -137,58 +137,35 @@ func (t *Tracer) start() error {
 
 func (t *Tracer) nextStats() ([]types.Stats, error) {
 	stats := []types.Stats{}
-
-	var prev *C.struct_file_id = nil
-	key := C.struct_file_id{}
 	entries := t.objs.Entries
 
-	defer func() {
-		// delete elements
-		err := entries.NextKey(nil, unsafe.Pointer(&key))
-		if err != nil {
-			return
-		}
+	next_key_out := C.struct_file_id_pub{}
+	keys_out := make([]C.struct_file_id_pub, 10240)
+	values_out := make([]C.struct_file_stat_pub, 10240)
 
-		for {
-			if err := entries.Delete(key); err != nil {
-				return
-			}
-
-			prev = &key
-			if err := entries.NextKey(unsafe.Pointer(prev), unsafe.Pointer(&key)); err != nil {
-				return
-			}
-		}
-	}()
-
-	// gather elements
-	err := entries.NextKey(nil, unsafe.Pointer(&key))
+	count, err := entries.BatchLookupAndDelete(nil, unsafe.Pointer(&next_key_out), keys_out, values_out, nil)
+	fmt.Printf("error was %s\n", err)
+	fmt.Printf("lookup returned %d keys\n", count)
 	if err != nil {
-		if errors.Is(err, ebpf.ErrKeyNotExist) {
-			return stats, nil
+		if !errors.Is(err, ebpf.ErrKeyNotExist) {
+			return nil, fmt.Errorf("error getting next key: %w", err)
 		}
-		return nil, fmt.Errorf("error getting next key: %w", err)
 	}
 
-	for {
-		fileStat := C.struct_file_stat{}
-		if err := entries.Lookup(key, unsafe.Pointer(&fileStat)); err != nil {
-			return nil, err
-		}
-
+	for i := 0; i < count; i++ {
+		fileStat := values_out[i]
 		stat := types.Stats{
-			Reads:      uint64(fileStat.reads),
-			Writes:     uint64(fileStat.writes),
-			ReadBytes:  uint64(fileStat.read_bytes),
-			WriteBytes: uint64(fileStat.write_bytes),
-			Pid:        uint32(fileStat.pid),
-			Tid:        uint32(fileStat.tid),
-			Filename:   C.GoString(&fileStat.filename[0]),
-			Comm:       C.GoString(&fileStat.comm[0]),
-			FileType:   byte(fileStat.type_),
-			MountNsID:  uint64(fileStat.mntns_id),
+			Reads:      uint64(fileStat.Reads),
+			Writes:     uint64(fileStat.Writes),
+			ReadBytes:  uint64(fileStat.Read_bytes),
+			WriteBytes: uint64(fileStat.Write_bytes),
+			Pid:        uint32(fileStat.Pid),
+			Tid:        uint32(fileStat.Tid),
+			Filename:   C.GoString(&fileStat.Filename[0]),
+			Comm:       C.GoString(&fileStat.Comm[0]),
+			FileType:   byte(fileStat.Type_),
+			MountNsID:  uint64(fileStat.Mntns_id),
 		}
-
 		container := t.resolver.LookupContainerByMntns(stat.MountNsID)
 		if container != nil {
 			stat.Container = container.Name
@@ -196,19 +173,12 @@ func (t *Tracer) nextStats() ([]types.Stats, error) {
 			stat.Namespace = container.Namespace
 			stat.Node = t.config.Node
 		}
-
 		stats = append(stats, stat)
-
-		prev = &key
-		if err := entries.NextKey(unsafe.Pointer(prev), unsafe.Pointer(&key)); err != nil {
-			if errors.Is(err, ebpf.ErrKeyNotExist) {
-				break
-			}
-			return nil, fmt.Errorf("error getting next key: %w", err)
-		}
 	}
 
 	types.SortStats(stats, t.config.SortBy)
+
+	fmt.Printf("returning stats with %d elements\n", len(stats))
 
 	return stats, nil
 }
