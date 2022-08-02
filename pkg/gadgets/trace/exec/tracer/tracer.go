@@ -96,6 +96,7 @@ func (t *Tracer) start() error {
 	}
 
 	consts := map[string]interface{}{
+		"ignore_failed":    false,
 		"filter_by_mnt_ns": filterByMntNs,
 	}
 

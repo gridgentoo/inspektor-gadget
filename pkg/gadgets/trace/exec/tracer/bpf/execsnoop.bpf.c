@@ -7,7 +7,7 @@
 #endif /* __TARGET_ARCH_arm64 */
 #include "execsnoop.h"
 
-const volatile bool ignore_failed = true;
+const volatile bool ignore_failed = false;
 const volatile uid_t targ_uid = INVALID_UID;
 const volatile int max_args = DEFAULT_MAXARGS;
 const volatile bool filter_by_mnt_ns = false;
