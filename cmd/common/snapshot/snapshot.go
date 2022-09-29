@@ -17,8 +17,6 @@ package snapshot
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
@@ -41,34 +39,42 @@ type SnapshotEvent interface {
 // SnapshotParser defines the interface that every snapshot-gadget parser has to
 // implement.
 type SnapshotParser[Event any] interface {
-	// SortEvents sorts a slice of events based on a predefined prioritization.
-	SortEvents(*[]Event)
+	// Sort sorts a slice of events based on a predefined prioritization.
+	Sort([]*Event, []string)
 
-	// TransformToColumns is called to transform an event to columns.
-	TransformToColumns(*Event) string
+	// TransformIntoColumns is called to transform an event to columns.
+	TransformIntoTable([]*Event) string
 
 	// BuildColumnsHeader returns a header with the requested custom columns
 	// that exist in the predefined columns list. The columns are separated by
 	// tabs.
 	BuildColumnsHeader() string
-
-	// GetOutputConfig returns the output configuration.
-	GetOutputConfig() *commonutils.OutputConfig
 }
 
 // SnapshotGadgetPrinter is in charge of printing the event of a snapshot gadget
 // using the parser.
 type SnapshotGadgetPrinter[Event SnapshotEvent] struct {
-	Parser SnapshotParser[Event]
+	SnapshotParser[Event]
+	SortingOrder []string
+	FilterEvents func(allProcesses *[]Event)
 }
 
-func (g *SnapshotGadgetPrinter[Event]) PrintEvents(allEvents []Event) error {
-	g.Parser.SortEvents(&allEvents)
+func (g *SnapshotGadgetPrinter[Event]) PrintEvents(outputConfig *commonutils.OutputConfig, sortBy []string, allEvents []Event) error {
+	if g.FilterEvents != nil {
+		g.FilterEvents(&allEvents)
+	}
 
-	outputConfig := g.Parser.GetOutputConfig()
+	// Adapt output for parser
+	allPointerEvents := make([]*Event, 0, len(allEvents))
+	for i := range allEvents {
+		allPointerEvents = append(allPointerEvents, &allEvents[i])
+	}
+
+	g.Sort(allPointerEvents, sortBy)
+
 	switch outputConfig.OutputMode {
 	case commonutils.OutputModeJSON:
-		b, err := json.MarshalIndent(allEvents, "", "  ")
+		b, err := json.MarshalIndent(allPointerEvents, "", "  ")
 		if err != nil {
 			return commonutils.WrapInErrMarshalOutput(err)
 		}
@@ -78,26 +84,20 @@ func (g *SnapshotGadgetPrinter[Event]) PrintEvents(allEvents []Event) error {
 	case commonutils.OutputModeColumns:
 		fallthrough
 	case commonutils.OutputModeCustomColumns:
-		// In the snapshot gadgets it's possible to use a tabwriter because
-		// we have the full list of events to print available, hence the
-		// tablewriter is able to determine the columns width. In other
-		// gadgets we don't know the size of all columns "a priori", hence
-		// we have to do a best effort printing fixed-width columns.
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 4, ' ', 0)
-
-		fmt.Fprintln(w, g.Parser.BuildColumnsHeader())
-
-		for _, e := range allEvents {
-			baseEvent := e.GetBaseEvent()
-			if baseEvent.Type != eventtypes.NORMAL {
-				commonutils.ManageSpecialEvent(baseEvent, outputConfig.Verbose)
+		// Firstly, manage special events
+		var specialIndexes []int
+		for i, e := range allPointerEvents {
+			baseEvent := (*e).GetBaseEvent()
+			if baseEvent.Type == eventtypes.NORMAL {
 				continue
 			}
 
-			fmt.Fprintln(w, g.Parser.TransformToColumns(&e))
+			commonutils.ManageSpecialEvent(baseEvent, outputConfig.Verbose)
+			specialIndexes = append(specialIndexes, i)
 		}
+		allPointerEvents = removeIndexes(allPointerEvents, specialIndexes)
 
-		w.Flush()
+		fmt.Println(g.TransformIntoTable(allPointerEvents))
 	default:
 		return commonutils.WrapInErrOutputModeNotSupported(outputConfig.OutputMode)
 	}
@@ -110,4 +110,11 @@ func NewCommonSnapshotCmd() *cobra.Command {
 		Use:   "snapshot",
 		Short: "Take a snapshot of a subsystem and print it",
 	}
+}
+
+func removeIndexes[T any](s []T, indexes []int) []T {
+	for _, index := range indexes {
+		s = append(s[:index], s[index+1:]...)
+	}
+	return s
 }

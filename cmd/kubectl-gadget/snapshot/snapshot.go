@@ -64,7 +64,7 @@ func (g *SnapshotGadget[Event]) Run() error {
 			allEvents = append(allEvents, events...)
 		}
 
-		return g.PrintEvents(allEvents)
+		return g.PrintEvents(&g.commonFlags.OutputConfig, g.SortingOrder, allEvents)
 	}
 
 	if err := utils.RunTraceAndPrintStatusOutput(config, callback); err != nil {

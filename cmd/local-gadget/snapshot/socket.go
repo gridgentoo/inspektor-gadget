@@ -20,9 +20,10 @@ import (
 	"github.com/spf13/cobra"
 
 	commonsnapshot "github.com/kinvolk/inspektor-gadget/cmd/common/snapshot"
+	commonutils "github.com/kinvolk/inspektor-gadget/cmd/common/utils"
 	"github.com/kinvolk/inspektor-gadget/cmd/local-gadget/utils"
 	containercollection "github.com/kinvolk/inspektor-gadget/pkg/container-collection"
-	"github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/tracer"
+	socketTracer "github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/tracer"
 	socketTypes "github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/types"
 	localgadgetmanager "github.com/kinvolk/inspektor-gadget/pkg/local-gadget-manager"
 )
@@ -32,9 +33,19 @@ func newSocketCmd() *cobra.Command {
 	var flags commonsnapshot.SocketFlags
 
 	runCmd := func(*cobra.Command, []string) error {
+		parser, err := commonutils.NewGadgetParserWithRuntimeInfo(
+			&commonFlags.OutputConfig,
+			commonsnapshot.GetSocketColumns(&flags),
+			commonFlags.ShowK8sMetadata,
+		)
+		if err != nil {
+			return commonutils.WrapInErrParserCreate(err)
+		}
+
 		socketGadget := &SnapshotGadget[socketTypes.Event]{
 			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[socketTypes.Event]{
-				Parser: commonsnapshot.NewSocketParserWithRuntimeInfo(&commonFlags.OutputConfig, &flags),
+				SnapshotParser: parser,
+				SortingOrder:   socketTypes.GetSortingOrder(),
 			},
 			commonFlags: &commonFlags,
 			runTracer: func(localGadgetManager *localgadgetmanager.LocalGadgetManager, containerSelector *containercollection.ContainerSelector) ([]socketTypes.Event, error) {
@@ -64,7 +75,7 @@ func newSocketCmd() *cobra.Command {
 
 					visitedNetNs[container.Netns] = struct{}{}
 
-					netNsSockets, err := tracer.RunCollector(
+					netNsSockets, err := socketTracer.RunCollector(
 						container.Pid,
 						container.KubernetesPodName,
 						container.KubernetesNamespace,

@@ -18,20 +18,30 @@ import (
 	"github.com/spf13/cobra"
 
 	commonsnapshot "github.com/kinvolk/inspektor-gadget/cmd/common/snapshot"
+	commonutils "github.com/kinvolk/inspektor-gadget/cmd/common/utils"
 	"github.com/kinvolk/inspektor-gadget/cmd/kubectl-gadget/utils"
-	"github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/types"
+	socketTypes "github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/types"
 )
 
 func newSocketCmd() *cobra.Command {
 	var commonFlags utils.CommonFlags
 	var flags commonsnapshot.SocketFlags
 
-	runCmd := func(cmd *cobra.Command, args []string) error {
-		socketGadget := &SnapshotGadget[types.Event]{
+	runCmd := func(*cobra.Command, []string) error {
+		parser, err := commonutils.NewGadgetParserWithK8sInfo(
+			&commonFlags.OutputConfig,
+			commonsnapshot.GetSocketColumns(&flags),
+		)
+		if err != nil {
+			return commonutils.WrapInErrParserCreate(err)
+		}
+
+		socketGadget := &SnapshotGadget[socketTypes.Event]{
 			name:        "socket-collector",
 			commonFlags: &commonFlags,
-			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[types.Event]{
-				Parser: commonsnapshot.NewSocketParserWithK8sInfo(&commonFlags.OutputConfig, &flags),
+			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[socketTypes.Event]{
+				SnapshotParser: parser,
+				SortingOrder:   socketTypes.GetSortingOrder(),
 			},
 			params: map[string]string{
 				"protocol": flags.Protocol,

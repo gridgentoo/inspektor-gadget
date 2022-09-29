@@ -117,10 +117,6 @@ func (p *BaseParser[E]) Transform(element *E, toColumns func(*E) string) string 
 	return ""
 }
 
-func (p *BaseParser[E]) GetOutputConfig() *OutputConfig {
-	return p.OutputConfig
-}
-
 func GetKubernetesColumns() []string {
 	return []string{
 		"node",

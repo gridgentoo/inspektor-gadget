@@ -52,7 +52,7 @@ func (g *SnapshotGadget[Event]) Run() error {
 		return commonutils.WrapInErrGadgetTracerCreateAndRun(err)
 	}
 
-	return g.PrintEvents(allEvents)
+	return g.PrintEvents(&g.commonFlags.OutputConfig, g.SortingOrder, allEvents)
 }
 
 func NewSnapshotCmd() *cobra.Command {
@@ -63,7 +63,7 @@ func NewSnapshotCmd() *cobra.Command {
 	// Socket gadget is disabled until we will enrich the socket information
 	// with the container that is using the inode. For further details, see
 	// https://github.com/kinvolk/inspektor-gadget/issues/744.
-	// traceCmd.AddCommand(newSocketCmd())
+	cmd.AddCommand(newSocketCmd())
 
 	return cmd
 }

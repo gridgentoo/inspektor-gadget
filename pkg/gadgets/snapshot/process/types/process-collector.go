@@ -15,17 +15,34 @@
 package types
 
 import (
+	"github.com/kinvolk/inspektor-gadget/pkg/columns"
 	eventtypes "github.com/kinvolk/inspektor-gadget/pkg/types"
 )
 
 type Event struct {
 	eventtypes.Event
-	Tgid      int    `json:"tgid"`
-	Pid       int    `json:"pid"`
-	Command   string `json:"comm"`
-	MountNsID uint64 `json:"mntns"`
+	Command   string `json:"comm" column:"comm,maxWidth:16"`
+	Pid       int    `json:"pid" column:"pid,minWidth:7"`
+	Tid       int    `json:"tid" column:"tid,minWidth:7,hide"`
+	MountNsID uint64 `json:"mntns" column:"mntns,width:12,hide"`
 }
 
 func (e Event) GetBaseEvent() eventtypes.Event {
 	return e.Event
+}
+
+func GetColumns() *columns.Columns[Event] {
+	return columns.MustCreateColumns[Event]()
+}
+
+func GetSortingOrder() []string {
+	return []string{
+		"node",
+		"namespace",
+		"pod",
+		"container",
+		"comm",
+		"pid",
+		"tid",
+	}
 }

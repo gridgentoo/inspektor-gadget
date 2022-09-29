@@ -106,8 +106,10 @@ func RunCollector(enricher gadgets.DataEnricher, mntnsmap *ebpf.Map) ([]processc
 			Event: eventtypes.Event{
 				Type: eventtypes.NORMAL,
 			},
-			Tgid:      tgid,
-			Pid:       pid,
+			// Map task-group-id (kernel space) to process-id (user-space)
+			Pid: tgid,
+			// Map process-id (kernel space) to thread-id (user-space)
+			Tid:       pid,
 			Command:   command,
 			MountNsID: mntnsid,
 		}

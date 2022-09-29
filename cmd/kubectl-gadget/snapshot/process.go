@@ -18,20 +18,35 @@ import (
 	"github.com/spf13/cobra"
 
 	commonsnapshot "github.com/kinvolk/inspektor-gadget/cmd/common/snapshot"
+	commonutils "github.com/kinvolk/inspektor-gadget/cmd/common/utils"
 	"github.com/kinvolk/inspektor-gadget/cmd/kubectl-gadget/utils"
-	"github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/process/types"
+	processTypes "github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/process/types"
 )
 
 func newProcessCmd() *cobra.Command {
 	var commonFlags utils.CommonFlags
 	var flags commonsnapshot.ProcessFlags
 
-	runCmd := func(cmd *cobra.Command, args []string) error {
-		processGadget := &SnapshotGadget[types.Event]{
+	runCmd := func(*cobra.Command, []string) error {
+		parser, err := commonutils.NewGadgetParserWithK8sInfo(
+			&commonFlags.OutputConfig,
+			commonsnapshot.GetProcessColumns(&flags),
+		)
+		if err != nil {
+			return commonutils.WrapInErrParserCreate(err)
+		}
+
+		processGadget := &SnapshotGadget[processTypes.Event]{
 			name:        "process-collector",
 			commonFlags: &commonFlags,
-			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[types.Event]{
-				Parser: commonsnapshot.NewProcessParserWithK8sInfo(&commonFlags.OutputConfig, &flags),
+			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[processTypes.Event]{
+				SnapshotParser: parser,
+				SortingOrder:   processTypes.GetSortingOrder(),
+				FilterEvents: func(allProcesses *[]processTypes.Event) {
+					if !flags.ShowThreads {
+						commonsnapshot.RemoveMultiThreads(allProcesses)
+					}
+				},
 			},
 		}
 

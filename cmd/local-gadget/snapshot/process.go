@@ -31,9 +31,24 @@ func newProcessCmd() *cobra.Command {
 	var flags commonsnapshot.ProcessFlags
 
 	runCmd := func(*cobra.Command, []string) error {
+		parser, err := commonutils.NewGadgetParserWithRuntimeInfo(
+			&commonFlags.OutputConfig,
+			commonsnapshot.GetProcessColumns(&flags),
+			commonFlags.ShowK8sMetadata,
+		)
+		if err != nil {
+			return commonutils.WrapInErrParserCreate(err)
+		}
+
 		processGadget := &SnapshotGadget[processTypes.Event]{
 			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[processTypes.Event]{
-				Parser: commonsnapshot.NewProcessParserWithRuntimeInfo(&commonFlags.OutputConfig, &flags),
+				SnapshotParser: parser,
+				SortingOrder:   processTypes.GetSortingOrder(),
+				FilterEvents: func(allProcesses *[]processTypes.Event) {
+					if !flags.ShowThreads {
+						commonsnapshot.RemoveMultiThreads(allProcesses)
+					}
+				},
 			},
 			commonFlags: &commonFlags,
 			runTracer: func(localGadgetManager *localgadgetmanager.LocalGadgetManager, containerSelector *containercollection.ContainerSelector) ([]processTypes.Event, error) {

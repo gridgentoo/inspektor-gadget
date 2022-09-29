@@ -16,133 +16,34 @@ package snapshot
 
 import (
 	"fmt"
-	"sort"
 	"strings"
 
-	commonutils "github.com/kinvolk/inspektor-gadget/cmd/common/utils"
-	"github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/types"
 	"github.com/spf13/cobra"
+
+	"github.com/kinvolk/inspektor-gadget/pkg/columns"
+	socketTypes "github.com/kinvolk/inspektor-gadget/pkg/gadgets/snapshot/socket/types"
 )
 
 type SocketFlags struct {
 	Extended bool
 	Protocol string
 
-	ParsedProtocol types.Proto
+	ParsedProtocol socketTypes.Proto
 }
 
-type SocketParser struct {
-	commonutils.BaseParser[types.Event]
-}
+func GetSocketColumns(flags *SocketFlags) *columns.Columns[socketTypes.Event] {
+	cols := socketTypes.GetColumns()
 
-func newSocketParser(outputConfig *commonutils.OutputConfig, flags *SocketFlags, prependColumns []string) SnapshotParser[types.Event] {
-	availableColumns := []string{
-		// TODO: Move Kubernetes metadata columns to common/utils.
-		"node",
-		"namespace",
-		"pod",
-		"protocol",
-		"local",
-		"remote",
-		"status",
-		"inode",
-	}
-
-	if len(outputConfig.CustomColumns) == 0 {
-		outputConfig.CustomColumns = GetSocketDefaultColumns()
-		if len(prependColumns) != 0 {
-			outputConfig.CustomColumns = append(prependColumns, outputConfig.CustomColumns...)
+	if flags.Extended {
+		inodeCol, ok := cols.GetColumn("inode")
+		if !ok {
+			panic(`making "inode" column visible`)
 		}
+
+		inodeCol.Visible = true
 	}
 
-	if outputConfig.OutputMode == commonutils.OutputModeColumns && flags.Extended {
-		outputConfig.CustomColumns = append(outputConfig.CustomColumns, "inode")
-	}
-
-	return &SocketParser{
-		BaseParser: commonutils.NewBaseTabParser[types.Event](availableColumns, outputConfig),
-	}
-}
-
-func NewSocketParserWithK8sInfo(outputConfig *commonutils.OutputConfig, flags *SocketFlags) SnapshotParser[types.Event] {
-	return newSocketParser(outputConfig, flags, commonutils.GetKubernetesColumns())
-}
-
-func NewSocketParserWithRuntimeInfo(outputConfig *commonutils.OutputConfig, flags *SocketFlags) SnapshotParser[types.Event] {
-	return newSocketParser(outputConfig, flags, commonutils.GetContainerRuntimeColumns())
-}
-
-func NewSocketParser(outputConfig *commonutils.OutputConfig, flags *SocketFlags) SnapshotParser[types.Event] {
-	return newSocketParser(outputConfig, flags, nil)
-}
-
-func (s *SocketParser) TransformToColumns(e *types.Event) string {
-	var sb strings.Builder
-
-	for _, col := range s.OutputConfig.CustomColumns {
-		switch col {
-		case "node":
-			sb.WriteString(fmt.Sprintf("%s", e.KubernetesNode))
-		case "namespace":
-			sb.WriteString(fmt.Sprintf("%s", e.KubernetesNamespace))
-		case "pod":
-			sb.WriteString(fmt.Sprintf("%s", e.KubernetesPodName))
-		case "protocol":
-			sb.WriteString(fmt.Sprintf("%s", e.Protocol))
-		case "local":
-			sb.WriteString(fmt.Sprintf("%s:%d", e.LocalAddress, e.LocalPort))
-		case "remote":
-			sb.WriteString(fmt.Sprintf("%s:%d", e.RemoteAddress, e.RemotePort))
-		case "status":
-			sb.WriteString(fmt.Sprintf("%s", e.Status))
-		case "inode":
-			sb.WriteString(fmt.Sprintf("%d", e.InodeNumber))
-		default:
-			continue
-		}
-		sb.WriteRune('\t')
-	}
-
-	return sb.String()
-}
-
-func (s *SocketParser) SortEvents(allSockets *[]types.Event) {
-	sort.Slice(*allSockets, func(i, j int) bool {
-		si, sj := (*allSockets)[i], (*allSockets)[j]
-		switch {
-		case si.KubernetesNode != sj.KubernetesNode:
-			return si.KubernetesNode < sj.KubernetesNode
-		case si.KubernetesNamespace != sj.KubernetesNamespace:
-			return si.KubernetesNamespace < sj.KubernetesNamespace
-		case si.KubernetesPodName != sj.KubernetesPodName:
-			return si.KubernetesPodName < sj.KubernetesPodName
-		case si.Protocol != sj.Protocol:
-			return si.Protocol < sj.Protocol
-		case si.Status != sj.Status:
-			return si.Status < sj.Status
-		case si.LocalAddress != sj.LocalAddress:
-			return si.LocalAddress < sj.LocalAddress
-		case si.RemoteAddress != sj.RemoteAddress:
-			return si.RemoteAddress < sj.RemoteAddress
-		case si.LocalPort != sj.LocalPort:
-			return si.LocalPort < sj.LocalPort
-		case si.RemotePort != sj.RemotePort:
-			return si.RemotePort < sj.RemotePort
-		default:
-			return si.InodeNumber < sj.InodeNumber
-		}
-	})
-}
-
-func GetSocketDefaultColumns() []string {
-	// The columns that will be used in case the user does not specify which
-	// specific columns they want to print through OutputConfig.
-	return []string{
-		"protocol",
-		"local",
-		"remote",
-		"status",
-	}
+	return cols
 }
 
 func NewSocketCmd(runCmd func(*cobra.Command, []string) error, flags *SocketFlags) *cobra.Command {
@@ -151,7 +52,7 @@ func NewSocketCmd(runCmd func(*cobra.Command, []string) error, flags *SocketFlag
 		Short: "Gather information about TCP and UDP sockets",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			var err error
-			if flags.ParsedProtocol, err = types.ParseProtocol(flags.Protocol); err != nil {
+			if flags.ParsedProtocol, err = socketTypes.ParseProtocol(flags.Protocol); err != nil {
 				return err
 			}
 
@@ -161,7 +62,7 @@ func NewSocketCmd(runCmd func(*cobra.Command, []string) error, flags *SocketFlag
 	}
 
 	var protocols []string
-	for protocol := range types.ProtocolsMap {
+	for protocol := range socketTypes.ProtocolsMap {
 		protocols = append(protocols, protocol)
 	}
 
