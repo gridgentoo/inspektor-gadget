@@ -20,7 +20,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -30,6 +29,7 @@ import (
 	"github.com/inspektor-gadget/inspektor-gadget/cmd/kubectl-gadget/utils"
 	gadgetv1alpha1 "github.com/inspektor-gadget/inspektor-gadget/pkg/apis/gadget/v1alpha1"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top/block-io/types"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/snapshotcombiner"
 )
 
 type BlockIOFlags struct {
@@ -40,10 +40,9 @@ type BlockIOFlags struct {
 
 type BlockIOParser struct {
 	commonutils.BaseParser[types.Stats]
-	sync.Mutex
 
-	flags     *BlockIOFlags
-	nodeStats map[string][]types.Stats
+	flags *BlockIOFlags
+	sc    *snapshotcombiner.SnapshotCombiner[types.Stats]
 }
 
 func newBlockIOCmd() *cobra.Command {
@@ -94,7 +93,7 @@ func newBlockIOCmd() *cobra.Command {
 			parser := &BlockIOParser{
 				BaseParser: commonutils.NewBaseWidthParser[types.Stats](columnsWidth, &commonFlags.OutputConfig),
 				flags:      &flags,
-				nodeStats:  make(map[string][]types.Stats),
+				sc:         snapshotcombiner.NewSnapshotCombiner[types.Stats](DefaultStatsTTL),
 			}
 
 			if len(args) == 1 {
@@ -161,9 +160,6 @@ func newBlockIOCmd() *cobra.Command {
 }
 
 func (p *BlockIOParser) Callback(line string, node string) {
-	p.Lock()
-	defer p.Unlock()
-
 	var event types.Event
 
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
@@ -176,7 +172,7 @@ func (p *BlockIOParser) Callback(line string, node string) {
 		return
 	}
 
-	p.nodeStats[node] = event.Stats
+	p.sc.AddSnapshot(node, event.Stats)
 }
 
 func (p *BlockIOParser) StartPrintLoop() {
@@ -207,15 +203,7 @@ func (p *BlockIOParser) PrintHeader() {
 
 func (p *BlockIOParser) PrintStats() {
 	// Sort and print stats
-	p.Lock()
-
-	stats := []types.Stats{}
-	for _, stat := range p.nodeStats {
-		stats = append(stats, stat...)
-	}
-	p.nodeStats = make(map[string][]types.Stats)
-
-	p.Unlock()
+	stats, _ := p.sc.GetSnapshots()
 
 	types.SortStats(stats, p.flags.ParsedSortBy)
 

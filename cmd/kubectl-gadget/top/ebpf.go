@@ -20,17 +20,17 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	"github.com/docker/go-units"
+	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
 	"github.com/inspektor-gadget/inspektor-gadget/cmd/kubectl-gadget/utils"
 	gadgetv1alpha1 "github.com/inspektor-gadget/inspektor-gadget/pkg/apis/gadget/v1alpha1"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top/ebpf/types"
-
-	"github.com/docker/go-units"
-	"github.com/spf13/cobra"
-	"golang.org/x/term"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/snapshotcombiner"
 )
 
 type EbpfFlags struct {
@@ -41,10 +41,9 @@ type EbpfFlags struct {
 
 type EbpfParser struct {
 	commonutils.BaseParser[types.Stats]
-	sync.Mutex
 
-	flags     *EbpfFlags
-	nodeStats map[string][]types.Stats
+	flags *EbpfFlags
+	sc    *snapshotcombiner.SnapshotCombiner[types.Stats]
 }
 
 func newEbpfCmd() *cobra.Command {
@@ -95,7 +94,7 @@ func newEbpfCmd() *cobra.Command {
 			parser := &EbpfParser{
 				BaseParser: commonutils.NewBaseWidthParser[types.Stats](columnsWidth, &commonFlags.OutputConfig),
 				flags:      &flags,
-				nodeStats:  make(map[string][]types.Stats),
+				sc:         snapshotcombiner.NewSnapshotCombiner[types.Stats](DefaultStatsTTL),
 			}
 
 			if len(args) == 1 {
@@ -179,9 +178,6 @@ func newEbpfCmd() *cobra.Command {
 }
 
 func (p *EbpfParser) Callback(line string, node string) {
-	p.Lock()
-	defer p.Unlock()
-
 	var event types.Event
 
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
@@ -194,7 +190,11 @@ func (p *EbpfParser) Callback(line string, node string) {
 		return
 	}
 
-	p.nodeStats[node] = event.Stats
+	for i := range event.Stats {
+		event.Stats[i].Node = node
+	}
+
+	p.sc.AddSnapshot(node, event.Stats)
 }
 
 func (p *EbpfParser) StartPrintLoop() {
@@ -225,18 +225,7 @@ func (p *EbpfParser) PrintHeader() {
 
 func (p *EbpfParser) PrintStats() {
 	// Sort and print stats
-	p.Lock()
-
-	stats := []types.Stats{}
-	for node, stat := range p.nodeStats {
-		for i := range stat {
-			stat[i].Node = node
-		}
-		stats = append(stats, stat...)
-	}
-	p.nodeStats = make(map[string][]types.Stats)
-
-	p.Unlock()
+	stats, _ := p.sc.GetSnapshots()
 
 	types.SortStats(stats, p.flags.ParsedSortBy)
 

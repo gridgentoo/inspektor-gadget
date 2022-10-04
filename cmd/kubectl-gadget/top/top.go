@@ -18,10 +18,12 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/inspektor-gadget/inspektor-gadget/cmd/kubectl-gadget/utils"
-
 	"github.com/spf13/cobra"
+
+	"github.com/inspektor-gadget/inspektor-gadget/cmd/kubectl-gadget/utils"
 )
+
+const DefaultStatsTTL = 2
 
 type CommonTopFlags struct {
 	OutputInterval int

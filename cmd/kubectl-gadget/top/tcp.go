@@ -20,7 +20,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -31,6 +30,7 @@ import (
 	"github.com/inspektor-gadget/inspektor-gadget/cmd/kubectl-gadget/utils"
 	gadgetv1alpha1 "github.com/inspektor-gadget/inspektor-gadget/pkg/apis/gadget/v1alpha1"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top/tcp/types"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/snapshotcombiner"
 )
 
 type TCPFlags struct {
@@ -43,10 +43,9 @@ type TCPFlags struct {
 
 type TCPParser struct {
 	commonutils.BaseParser[types.Stats]
-	sync.Mutex
 
-	flags     *TCPFlags
-	nodeStats map[string][]types.Stats
+	flags *TCPFlags
+	sc    *snapshotcombiner.SnapshotCombiner[types.Stats]
 }
 
 func newTCPCmd() *cobra.Command {
@@ -95,7 +94,7 @@ func newTCPCmd() *cobra.Command {
 			parser := &TCPParser{
 				BaseParser: commonutils.NewBaseWidthParser[types.Stats](columnsWidth, &commonFlags.OutputConfig),
 				flags:      &flags,
-				nodeStats:  make(map[string][]types.Stats),
+				sc:         snapshotcombiner.NewSnapshotCombiner[types.Stats](DefaultStatsTTL),
 			}
 			if len(args) == 1 {
 				flags.OutputInterval, err = strconv.Atoi(args[0])
@@ -186,9 +185,6 @@ func newTCPCmd() *cobra.Command {
 }
 
 func (p *TCPParser) Callback(line string, node string) {
-	p.Lock()
-	defer p.Unlock()
-
 	var event types.Event
 
 	if err := json.Unmarshal([]byte(line), &event); err != nil {
@@ -201,7 +197,7 @@ func (p *TCPParser) Callback(line string, node string) {
 		return
 	}
 
-	p.nodeStats[node] = event.Stats
+	p.sc.AddSnapshot(node, event.Stats)
 }
 
 func (p *TCPParser) StartPrintLoop() {
@@ -232,15 +228,7 @@ func (p *TCPParser) PrintHeader() {
 
 func (p *TCPParser) PrintStats() {
 	// Sort and print stats
-	p.Lock()
-
-	stats := []types.Stats{}
-	for _, stat := range p.nodeStats {
-		stats = append(stats, stat...)
-	}
-	p.nodeStats = make(map[string][]types.Stats)
-
-	p.Unlock()
+	stats, _ := p.sc.GetSnapshots()
 
 	types.SortStats(stats, p.flags.ParsedSortBy)
 
