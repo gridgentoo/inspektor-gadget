@@ -338,13 +338,17 @@ func NewManager(runtimes []*containerutils.RuntimeConfig) (*LocalGadgetManager, 
 		return nil, err
 	}
 
+	// The ContainersMap is used by the audit/seccomp gadget to enrich the
+	// events with the k8s metadata. However, we don't need to pin it for that.
 	l.containersMap, err = containersmap.NewContainersMap("")
 	if err != nil {
-		return nil, fmt.Errorf("error creating containers map: %w", err)
+		return nil, fmt.Errorf("creating containers map: %w", err)
 	}
-	containerEventFuncs := []containercollection.FuncNotify{}
-	containerEventFuncs = append(containerEventFuncs, l.containersMap.ContainersMapUpdater())
-	containerEventFuncs = append(containerEventFuncs, l.tracerCollection.TracerMapsUpdater())
+
+	containerEventFuncs := []containercollection.FuncNotify{
+		l.containersMap.ContainersMapUpdater(),
+		l.tracerCollection.TracerMapsUpdater(),
+	}
 
 	err = l.ContainerCollection.Initialize(
 		containercollection.WithPubSub(containerEventFuncs...),
