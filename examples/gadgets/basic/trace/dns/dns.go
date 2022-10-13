@@ -32,6 +32,7 @@ func main() {
 	// In some kernel versions it's needed to bump the rlimits to
 	// use run BPF programs.
 	if err := rlimit.RemoveMemlock(); err != nil {
+		fmt.Printf("bumping the rlimits: %s\n", err)
 		return
 	}
 

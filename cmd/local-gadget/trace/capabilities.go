@@ -35,6 +35,7 @@ func newCapabilitiesCmd() *cobra.Command {
 		parser, err := commonutils.NewGadgetParserWithRuntimeInfo(
 			&commonFlags.OutputConfig,
 			capabilitiesTypes.GetColumns(),
+			commonFlags.ShowK8sMetadata,
 		)
 		if err != nil {
 			return commonutils.WrapInErrParserCreate(err)

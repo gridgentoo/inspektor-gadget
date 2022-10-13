@@ -30,6 +30,7 @@ func main() {
 	// In some kernel versions it's needed to bump the rlimits to
 	// use run BPF programs.
 	if err := rlimit.RemoveMemlock(); err != nil {
+		fmt.Printf("bumping the rlimits: %s\n", err)
 		return
 	}
 
@@ -44,7 +45,7 @@ func main() {
 	// reason, no enricher is passed.
 	tracer, err := tracer.NewTracer(&tracer.Config{}, nil, eventCallback)
 	if err != nil {
-		fmt.Printf("error creating tracer: %s\n", err)
+		fmt.Printf("creating tracer: %s\n", err)
 		return
 	}
 	defer tracer.Stop()

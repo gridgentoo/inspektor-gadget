@@ -34,10 +34,10 @@ func main() {
 		switch event.Type {
 		case containercollection.EventTypeAddContainer:
 			fmt.Printf("Container added: %q pid %d\n",
-				event.Container.KubernetesContainerName, event.Container.Pid)
+				event.Container.RuntimeContainerName, event.Container.Pid)
 		case containercollection.EventTypeRemoveContainer:
 			fmt.Printf("Container removed: %q pid %d\n",
-				event.Container.KubernetesContainerName, event.Container.Pid)
+				event.Container.RuntimeContainerName, event.Container.Pid)
 		}
 	}
 

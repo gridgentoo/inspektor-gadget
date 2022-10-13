@@ -47,6 +47,7 @@ func main() {
 	// In some kernel versions it's needed to bump the rlimits to
 	// use run BPF programs.
 	if err := rlimit.RemoveMemlock(); err != nil {
+		fmt.Printf("bumping the rlimits: %s\n", err)
 		return
 	}
 
@@ -91,13 +92,14 @@ func main() {
 	// Define a callback to be called each time there is an event.
 	eventCallback := func(event types.Event) {
 		fmt.Printf("A new %q process with pid %d was executed in container %q\n",
-			event.Comm, event.Pid, event.KubernetesContainerName)
+			event.Comm, event.Pid, event.RuntimeContainerName)
+		// spew.Dump(event)
 	}
 
 	// Create a tracer instance. This is the glue piece that allows
 	// this example to filter events by containers.
 	containerSelector := containercollection.ContainerSelector{
-		KubernetesContainerName: containerName,
+		RuntimeContainerName: containerName,
 	}
 
 	if err := tracerCollection.AddTracer(traceName, containerSelector); err != nil {

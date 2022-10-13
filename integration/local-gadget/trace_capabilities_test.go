@@ -44,7 +44,7 @@ func TestTraceCapabilities(t *testing.T) {
 				// TODO: Handle it once we support getting K8s container name for docker
 				// Issue: https://github.com/kinvolk/inspektor-gadget/issues/737
 				if *containerRuntime == ContainerRuntimeDocker {
-					e.Container = "test-pod"
+					e.KubernetesContainerName = "test-pod"
 				}
 
 				e.Pid = 0

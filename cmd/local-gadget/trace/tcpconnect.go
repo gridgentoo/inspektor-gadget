@@ -34,6 +34,7 @@ func newTcpconnectCmd() *cobra.Command {
 		parser, err := commonutils.NewGadgetParserWithRuntimeInfo(
 			&commonFlags.OutputConfig,
 			tcpconnectTypes.GetColumns(),
+			commonFlags.ShowK8sMetadata,
 		)
 		if err != nil {
 			return commonutils.WrapInErrParserCreate(err)
