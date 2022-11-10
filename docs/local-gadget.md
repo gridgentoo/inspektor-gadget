@@ -344,6 +344,32 @@ test-container                                             630417     whoami    
 test-container                                             630954     whoami           3     0   /etc/passwd
 ```
 
+### Trace/Network
+
+The trace network tool monitors the network activity and records the list of TCP
+connections and UDP streams.
+
+Let's start the gadget in a terminal:
+
+```bash
+$ sudo local-gadget trace network -c test-container
+CONTAINER                       TYPE      PROTO PORT  REMOTE
+```
+
+Run a container that generates TCP and UDP network traffic:
+
+```bash
+$ docker run --name test-container -ti --rm busybox /bin/sh -c "wget http://1.1.1.1.nip.io/"
+```
+
+The tools will show the network activity:
+
+```bash
+$ sudo local-gadget trace network -c test-container
+CONTAINER                       TYPE      PROTO PORT  REMOTE
+demo                            OUTGOING  udp   53    192.168.67.1
+demo                            OUTGOING  tcp   80    1.1.1.1
+```
 
 ### Trace/Mount
 

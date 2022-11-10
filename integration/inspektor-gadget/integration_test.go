@@ -51,6 +51,7 @@ import (
 	sniTypes "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/sni/types"
 	tcpTypes "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcp/types"
 	tcpconnectTypes "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/tcpconnect/types"
+	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 )
 
 const (
@@ -1068,27 +1069,49 @@ func TestNetworkGraph(t *testing.T) {
 	}
 
 	RunTestSteps(commandsPreTest, t)
-	NginxIP := GetTestPodIP(ns, "nginx-pod")
+	nginxIP := GetTestPodIP(ns, "nginx-pod")
 
 	networkGraphCmd := &Command{
 		Name:         "StartNetworkGadget",
 		Cmd:          fmt.Sprintf("$KUBECTL_GADGET trace network -n %s -o json", ns),
 		StartAndStop: true,
 		ExpectedOutputFn: func(output string) error {
-			TestPodIP := GetTestPodIP(ns, "test-pod")
+			testPodIP := GetTestPodIP(ns, "test-pod")
 
-			expectedEntry := &networkTypes.Event{
-				Event:           BuildBaseEvent(ns),
-				PktType:         "OUTGOING",
-				Proto:           "tcp",
-				RemoteAddr:      NginxIP,
-				Port:            80,
-				RemoteKind:      networkTypes.RemoteKindPod,
-				PodIP:           TestPodIP,
-				PodLabels:       map[string]string{"run": "test-pod"},
-				RemoteNamespace: ns,
-				RemoteName:      "nginx-pod",
-				RemoteLabels:    map[string]string{"run": "nginx-pod"},
+			expectedEntries := []*networkTypes.Event{
+				{
+					Event:           BuildBaseEvent(ns),
+					PktType:         "OUTGOING",
+					Proto:           "tcp",
+					PodIP:           testPodIP,
+					PodLabels:       map[string]string{"run": "test-pod"},
+					Port:            80,
+					RemoteKind:      networkTypes.RemoteKindPod,
+					RemoteAddr:      nginxIP,
+					RemoteNamespace: ns,
+					RemoteName:      "nginx-pod",
+					RemoteLabels:    map[string]string{"run": "nginx-pod"},
+				},
+				{
+					Event: eventtypes.Event{
+						Type: eventtypes.NORMAL,
+						CommonData: eventtypes.CommonData{
+							Namespace: ns,
+							Pod:       "nginx-pod",
+							Container: "nginx-pod",
+						},
+					},
+					PktType:         "HOST",
+					Proto:           "tcp",
+					PodIP:           nginxIP,
+					PodLabels:       map[string]string{"run": "nginx-pod"},
+					Port:            80,
+					RemoteKind:      networkTypes.RemoteKindPod,
+					RemoteAddr:      testPodIP,
+					RemoteNamespace: ns,
+					RemoteName:      "test-pod",
+					RemoteLabels:    map[string]string{"run": "test-pod"},
+				},
 			}
 
 			normalize := func(e *networkTypes.Event) {
@@ -1096,13 +1119,13 @@ func TestNetworkGraph(t *testing.T) {
 				e.PodHostIP = ""
 			}
 
-			return ExpectEntriesToMatch(output, normalize, expectedEntry)
+			return ExpectEntriesToMatch(output, normalize, expectedEntries...)
 		},
 	}
 
 	commands := []*Command{
 		networkGraphCmd,
-		BusyboxPodRepeatCommand(ns, fmt.Sprintf("wget -q -O /dev/null %s:80", NginxIP)),
+		BusyboxPodRepeatCommand(ns, fmt.Sprintf("wget -q -O /dev/null %s:80", nginxIP)),
 		WaitUntilTestPodReadyCommand(ns),
 		DeleteTestNamespaceCommand(ns),
 	}
