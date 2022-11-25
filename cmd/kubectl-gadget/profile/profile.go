@@ -107,6 +107,7 @@ func NewProfileCmd() *cobra.Command {
 
 	cmd.AddCommand(newBlockIOCmd())
 	cmd.AddCommand(newCPUCmd())
+	cmd.AddCommand(newLanguagesCmd())
 
 	return cmd
 }

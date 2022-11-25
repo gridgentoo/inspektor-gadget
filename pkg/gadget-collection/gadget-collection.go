@@ -20,6 +20,7 @@ import (
 	auditseccomp "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/audit/seccomp"
 	biolatency "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/profile/block-io"
 	profile "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/profile/cpu"
+	profilelanguages "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/profile/languages"
 	processcollector "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/snapshot/process"
 	socketcollector "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/snapshot/socket"
 	biotop "github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/top/block-io"
@@ -68,6 +69,7 @@ func TraceFactories() map[string]gadgets.TraceFactory {
 		"tcptop":            tcptop.NewFactory(),
 		"tcptracer":         tcptracer.NewFactory(),
 		"traceloop":         traceloop.NewFactory(),
+		"profile-languages": profilelanguages.NewFactory(),
 	}
 }
 
