@@ -111,6 +111,7 @@ func (g *ProfileGadget[Report]) Run() error {
 func NewProfileCmd() *cobra.Command {
 	cmd := commonprofile.NewCommonProfileCmd()
 
+	cmd.AddCommand(newBlockIOCmd())
 	cmd.AddCommand(newCPUCmd())
 
 	return cmd
