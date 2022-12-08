@@ -15,51 +15,49 @@
 package top
 
 import (
-	"fmt"
 	"strconv"
 
 	"github.com/spf13/cobra"
 
+	commontop "github.com/inspektor-gadget/inspektor-gadget/cmd/common/top"
 	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top"
+	"github.com/inspektor-gadget/inspektor-gadget/cmd/kubectl-gadget/utils"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top/file/types"
 )
 
 func newFileCmd() *cobra.Command {
-	var commonTopFlags CommonTopFlags
+	var commonFlags utils.CommonFlags
+	var flags commontop.FileFlags
 
-	var allFiles bool
 	cols := types.GetColumns()
 
-	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("file [interval=%d]", top.IntervalDefault),
-		Short: "Periodically report read/write activity by file",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			parser, err := commonutils.NewGadgetParserWithK8sInfo(&commonTopFlags.OutputConfig, types.GetColumns())
-			if err != nil {
-				return commonutils.WrapInErrParserCreate(err)
-			}
+	cmd := commontop.NewFileCmd(func(cmd *cobra.Command, args []string) error {
+		parser, err := commontop.NewFileParserWithK8sInfo(&commonFlags.OutputConfig, &flags)
+		if err != nil {
+			return commonutils.WrapInErrParserCreate(err)
+		}
 
-			gadget := &TopGadget[types.Stats]{
-				name:           "filetop",
-				commonTopFlags: &commonTopFlags,
-				params: map[string]string{
-					types.AllFilesParam: strconv.FormatBool(allFiles),
-				},
-				parser:    parser,
-				nodeStats: make(map[string][]*types.Stats),
-				colMap:    cols.GetColumnMap(),
-			}
+		gadget := &TopKubectlGadget[types.Stats]{
+			TopGadget: commontop.TopGadget[types.Stats]{
+				Name:           "filetop",
+				Parser:         parser,
+				CommonTopFlags: &flags.CommonTopFlags,
+				ColMap:         cols.GetColumnMap(),
+			},
+			params: map[string]string{
+				types.AllFilesParam: strconv.FormatBool(flags.ShowAllFiles),
+			},
+			commonFlags: commonFlags,
+			nodeStats:   make(map[string][]*types.Stats),
+		}
+		gadget.Printer = gadget
 
-			return gadget.Run(args)
-		},
-		SilenceUsage: true,
-		Args:         cobra.MaximumNArgs(1),
-	}
+		return gadget.Run(args)
+	}, &flags)
+	cmd.SilenceUsage = true
+	cmd.Args = cobra.MaximumNArgs(1)
 
-	addCommonTopFlags(cmd, &commonTopFlags, &commonTopFlags.CommonFlags, cols.ColumnMap, types.SortByDefault)
-
-	cmd.Flags().BoolVarP(&allFiles, "all-files", "a", types.AllFilesDefault, "Include non-regular file types (sockets, FIFOs, etc)")
+	addCommonTopFlags(cmd, &flags.CommonTopFlags, &commonFlags, cols.ColumnMap, types.SortByDefault)
 
 	return cmd
 }
