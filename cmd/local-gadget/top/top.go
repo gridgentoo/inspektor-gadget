@@ -152,6 +152,7 @@ func NewTopCmd() *cobra.Command {
 	cmd := commontop.NewCommonTopCmd()
 
 	cmd.AddCommand(newBlockIOCmd())
+	cmd.AddCommand(newEbpfCmd())
 
 	return cmd
 }
