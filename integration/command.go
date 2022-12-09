@@ -62,6 +62,10 @@ type Command struct {
 	// It is only used by command which have StartAndStop set.
 	Started bool
 
+	// SkipLogs can be used to skip inspektor gadget logs
+	// e.g in non-Kubernetes environment
+	SkipLogs bool
+
 	// command is a Cmd object used when we want to start the command, then other
 	// do stuff and wait for its completion.
 	command *exec.Cmd
@@ -262,12 +266,15 @@ func (c *Command) createExecCmd() {
 }
 
 // getInspektorGadgetLogs returns a string with the logs of the gadget pods
-func getInspektorGadgetLogs() string {
-	var sb strings.Builder
+func (c *Command) getInspektorGadgetLogs() string {
+	if c.SkipLogs {
+		return ""
+	}
 
+	var sb strings.Builder
 	logCommands := []string{
-		"kubectl get pods -n gadget -o wide",
-		`for pod in $(kubectl get pods -n gadget -o name); do
+		"kubectl get pods --request-timeout 2s -n gadget -o wide",
+		`for pod in $(kubectl get pods --request-timeout 2s -n gadget -o name); do
 			kubectl logs -n gadget $pod;
 		done`,
 	}
@@ -295,19 +302,19 @@ func (c *Command) verifyOutput() error {
 		r := regexp.MustCompile(c.ExpectedRegexp)
 		if !r.MatchString(output) {
 			return fmt.Errorf("output didn't match the expected regexp: %s\n%s",
-				c.ExpectedRegexp, getInspektorGadgetLogs())
+				c.ExpectedRegexp, c.getInspektorGadgetLogs())
 		}
 	}
 
 	if c.ExpectedString != "" && output != c.ExpectedString {
 		return fmt.Errorf("output didn't match the expected string: %s\n%v\n%s",
-			c.ExpectedString, pretty.Diff(c.ExpectedString, output), getInspektorGadgetLogs())
+			c.ExpectedString, pretty.Diff(c.ExpectedString, output), c.getInspektorGadgetLogs())
 	}
 
 	if c.ExpectedOutputFn != nil {
 		if err := c.ExpectedOutputFn(output); err != nil {
 			return fmt.Errorf("verifying output with custom function: %w\n%s",
-				err, getInspektorGadgetLogs())
+				err, c.getInspektorGadgetLogs())
 		}
 	}
 
