@@ -151,5 +151,7 @@ func (g *TopLocalGadget[Stats]) PrintStats() {
 func NewTopCmd() *cobra.Command {
 	cmd := commontop.NewCommonTopCmd()
 
+	cmd.AddCommand(newBlockIOCmd())
+
 	return cmd
 }
