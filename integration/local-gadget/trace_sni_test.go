@@ -33,6 +33,7 @@ func TestTraceSni(t *testing.T) {
 		ExpectedOutputFn: func(output string) error {
 			expectedEntry := &sniTypes.Event{
 				Event: BuildBaseEvent(ns),
+				Comm:  "wget",
 				Name:  "kubernetes.default.svc.cluster.local",
 			}
 
@@ -42,6 +43,9 @@ func TestTraceSni(t *testing.T) {
 				if *containerRuntime == ContainerRuntimeDocker {
 					e.Container = "test-pod"
 				}
+				e.MountNsID = 0
+				e.Pid = 0
+				e.Tid = 0
 			}
 
 			return ExpectEntriesToMatch(output, normalize, expectedEntry)
