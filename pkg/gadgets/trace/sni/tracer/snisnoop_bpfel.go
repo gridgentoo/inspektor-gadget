@@ -13,7 +13,25 @@ import (
 	"github.com/cilium/ebpf"
 )
 
-type snisnoopEventT struct{ Name [128]uint8 }
+type snisnoopEventT struct {
+	MountNsId uint64
+	Pid       uint32
+	Tid       uint32
+	Task      [16]uint8
+	Name      [128]uint8
+}
+
+type snisnoopSocketsKey struct {
+	Netns uint32
+	Proto uint16
+	Port  uint16
+}
+
+type snisnoopSocketsValue struct {
+	Mntns   uint64
+	PidTgid uint64
+	Task    [16]int8
+}
 
 // loadSnisnoop returns the embedded CollectionSpec for snisnoop.
 func loadSnisnoop() (*ebpf.CollectionSpec, error) {
@@ -63,7 +81,8 @@ type snisnoopProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type snisnoopMapSpecs struct {
-	Events *ebpf.MapSpec `ebpf:"events"`
+	Events  *ebpf.MapSpec `ebpf:"events"`
+	Sockets *ebpf.MapSpec `ebpf:"sockets"`
 }
 
 // snisnoopObjects contains all objects after they have been loaded into the kernel.
@@ -85,12 +104,14 @@ func (o *snisnoopObjects) Close() error {
 //
 // It can be passed to loadSnisnoopObjects or ebpf.CollectionSpec.LoadAndAssign.
 type snisnoopMaps struct {
-	Events *ebpf.Map `ebpf:"events"`
+	Events  *ebpf.Map `ebpf:"events"`
+	Sockets *ebpf.Map `ebpf:"sockets"`
 }
 
 func (m *snisnoopMaps) Close() error {
 	return _SnisnoopClose(
 		m.Events,
+		m.Sockets,
 	)
 }
 

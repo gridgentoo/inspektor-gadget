@@ -18,14 +18,17 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"syscall"
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/perf"
+	log "github.com/sirupsen/logrus"
 	"golang.org/x/sys/unix"
 
 	containerutils "github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/internal/socketenricher"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/rawsock"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 )
@@ -46,6 +49,8 @@ type attachment struct {
 
 func newAttachment(
 	pid uint32,
+	netns uint64,
+	socketEnricher *socketenricher.SocketEnricher,
 	spec *ebpf.CollectionSpec,
 	bpfProgName string,
 	bpfPerfMapName string,
@@ -69,7 +74,25 @@ func newAttachment(
 		}
 	}()
 
-	a.collection, err = ebpf.NewCollection(spec)
+	spec = spec.Copy()
+
+	u32netns := uint32(netns)
+	consts := map[string]interface{}{
+		"current_netns": u32netns,
+	}
+
+	if err := spec.RewriteConstants(consts); err != nil && !strings.Contains(err.Error(), "spec is missing one or more constants") {
+		return nil, fmt.Errorf("error RewriteConstants while attaching to pid %d: %w", pid, err)
+	}
+
+	mapReplacements := map[string]*ebpf.Map{}
+	mapReplacements["sockets"] = socketEnricher.SocketsMap()
+
+	opts := ebpf.CollectionOptions{
+		MapReplacements: mapReplacements,
+	}
+
+	a.collection, err = ebpf.NewCollectionWithOptions(spec, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create BPF collection: %w", err)
 	}
@@ -97,7 +120,8 @@ func newAttachment(
 }
 
 type Tracer[Event any] struct {
-	spec *ebpf.CollectionSpec
+	socketEnricher *socketenricher.SocketEnricher
+	spec           *ebpf.CollectionSpec
 
 	// key: network namespace inode number
 	// value: Tracelet
@@ -119,7 +143,13 @@ func NewTracer[Event any](
 	baseEvent func(ev types.Event) Event,
 	parseEvent func([]byte) (*Event, error),
 ) *Tracer[Event] {
+	socketEnricher, err := socketenricher.NewSocketEnricher()
+	if err != nil {
+		// Non fatal: an older kernel might not support bpf extensions
+		log.Errorf("failed to start socket enricher: %s", err)
+	}
 	return &Tracer[Event]{
+		socketEnricher:  socketEnricher,
 		spec:            spec,
 		attachments:     make(map[uint64]*attachment),
 		bpfProgName:     bpfProgName,
@@ -140,7 +170,7 @@ func (t *Tracer[Event]) Attach(pid uint32, eventCallback func(Event)) error {
 		return nil
 	}
 
-	a, err := newAttachment(pid, t.spec, t.bpfProgName, t.bpfPerfMapName, t.bpfSocketAttach)
+	a, err := newAttachment(pid, netns, t.socketEnricher, t.spec, t.bpfProgName, t.bpfPerfMapName, t.bpfSocketAttach)
 	if err != nil {
 		return fmt.Errorf("creating network tracer attachment for pid %d: %w", pid, err)
 	}
@@ -211,5 +241,8 @@ func (t *Tracer[Event]) Detach(pid uint32) error {
 func (t *Tracer[Event]) Close() {
 	for key, l := range t.attachments {
 		t.releaseAttachment(key, l)
+	}
+	if t.socketEnricher != nil {
+		t.socketEnricher.Close()
 	}
 }

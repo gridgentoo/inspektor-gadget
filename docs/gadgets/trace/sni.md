@@ -36,11 +36,11 @@ Location: https://github.com/ [following]
 Go back to *the first terminal* and see:
 
 ```
-NODE             NAMESPACE        POD              NAME
-minikube         default          ubuntu           wikimedia.org
-minikube         default          ubuntu           www.wikimedia.org
-minikube         default          ubuntu           www.github.com
-minikube         default          ubuntu           github.com
+NODE               NAMESPACE          POD                PID        TID        COMM      NAME
+minikube           default            ubuntu             1123615    1123615    wget      wikimedia.org
+minikube           default            ubuntu             1123615    1123615    wget      www.wikimedia.org
+minikube           default            ubuntu             1123670    1123670    wget      www.github.com
+minikube           default            ubuntu             1123670    1123670    wget      github.com
 ```
 
 We can see that each time our `wget` client connected to a different

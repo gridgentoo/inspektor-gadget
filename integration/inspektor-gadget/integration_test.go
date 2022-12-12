@@ -1251,6 +1251,7 @@ func TestSnisnoop(t *testing.T) {
 		ExpectedOutputFn: func(output string) error {
 			expectedEntry := &sniTypes.Event{
 				Event: BuildBaseEvent(ns),
+				Comm:  "wget",
 				Name:  "inspektor-gadget.io",
 			}
 
@@ -1259,6 +1260,9 @@ func TestSnisnoop(t *testing.T) {
 
 			normalize := func(e *sniTypes.Event) {
 				e.Node = ""
+				e.MountNsID = 0
+				e.Pid = 0
+				e.Tid = 0
 			}
 
 			return ExpectAllToMatch(output, normalize, expectedEntry)
