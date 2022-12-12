@@ -203,6 +203,18 @@ gadget       gadgettracerman    39645    39677
 gadget       gadgettracerman    39645    39678
 ```
 
+### Top/Block-io
+
+```bash
+$ sudo local-gadget top block-io
+
+```
+
+The previous output ...
+
+```bash
+```
+
 ### Trace/Bind
 
 ```bash
@@ -211,13 +223,14 @@ CONTAINER        PID     COMM             PROTO  ADDR             PORT    OPTS  
 foo              380299  nc               TCP    ::               4242    .R...   0
 ```
 
-The previous output was trigged using the following test container:
+The previous output was triggered using the following test container:
 
 ```bash
 $ docker run -it --rm --name foo busybox /bin/sh -c "nc -l -p 4242"
 ```
 
 In case of need, we can specify the ports we want to monitor:
+
 ```bash
 $ sudo local-gadget trace bind --ports 4242
 ```
