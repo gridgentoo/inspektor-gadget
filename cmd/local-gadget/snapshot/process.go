@@ -49,7 +49,8 @@ func newProcessCmd() *cobra.Command {
 				}
 				defer localGadgetManager.RemoveMountNsMap()
 				config := &processTracer.Config{
-					MountnsMap: mountnsmap,
+					MountnsMap:  mountnsmap,
+					GetLanguage: flags.GetLanguage,
 				}
 				return processTracer.RunCollector(config, &localGadgetManager.ContainerCollection)
 			},

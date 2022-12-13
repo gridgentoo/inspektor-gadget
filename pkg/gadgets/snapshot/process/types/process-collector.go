@@ -19,6 +19,10 @@ import (
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 )
 
+const (
+	GetLanguageParam = "get_language"
+)
+
 type Event struct {
 	eventtypes.Event
 
@@ -26,6 +30,7 @@ type Event struct {
 	Pid       int    `json:"pid" column:"pid,template:pid"`
 	Tid       int    `json:"tid" column:"tid,template:pid,hide"`
 	MountNsID uint64 `json:"mntns" column:"mntns,template:ns"`
+	Language  string `json:"language" column:"language,hide"`
 }
 
 func GetColumns() *columns.Columns[Event] {

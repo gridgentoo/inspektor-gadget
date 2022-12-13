@@ -15,6 +15,8 @@
 package snapshot
 
 import (
+	"strconv"
+
 	"github.com/spf13/cobra"
 
 	commonsnapshot "github.com/inspektor-gadget/inspektor-gadget/cmd/common/snapshot"
@@ -33,9 +35,13 @@ func newProcessCmd() *cobra.Command {
 			return commonutils.WrapInErrParserCreate(err)
 		}
 
+		params := make(map[string]string)
+		params[types.GetLanguageParam] = strconv.FormatBool(flags.GetLanguage)
+
 		processGadget := &SnapshotGadget[types.Event]{
 			name:        "process-collector",
 			commonFlags: &commonFlags,
+			params:      params,
 			SnapshotGadgetPrinter: commonsnapshot.SnapshotGadgetPrinter[types.Event]{
 				Parser: parser,
 			},

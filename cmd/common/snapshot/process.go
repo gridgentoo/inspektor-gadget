@@ -25,6 +25,7 @@ import (
 
 type ProcessFlags struct {
 	showThreads bool
+	GetLanguage bool
 }
 
 type ProcessParser struct {
@@ -37,6 +38,18 @@ type ProcessParser struct {
 func newProcessParser(outputConfig *commonutils.OutputConfig, flags *ProcessFlags, cols *columns.Columns[types.Event], options ...commonutils.Option) (SnapshotParser[types.Event], error) {
 	if flags.showThreads {
 		col, _ := cols.GetColumn("tid")
+		col.Visible = true
+	}
+
+	for _, col := range outputConfig.CustomColumns {
+		if col == "language" {
+			flags.GetLanguage = true
+			break
+		}
+	}
+
+	if flags.GetLanguage {
+		col, _ := cols.GetColumn("language")
 		col.Visible = true
 	}
 
@@ -76,7 +89,7 @@ func (p *ProcessParser) SortEvents(allProcesses *[]*types.Event) {
 	}
 
 	columnssort.SortEntries(types.GetColumns().GetColumnMap(), *allProcesses,
-		[]string{"node", "namespace", "pod", "container", "cmd", "tgid", "pid"})
+		[]string{"node", "namespace", "pod", "container", "cmd", "tgid", "pid", "language"})
 }
 
 func NewProcessCmd(runCmd func(*cobra.Command, []string) error, flags *ProcessFlags) *cobra.Command {
@@ -92,6 +105,14 @@ func NewProcessCmd(runCmd func(*cobra.Command, []string) error, flags *ProcessFl
 		"t",
 		false,
 		"Show all threads",
+	)
+
+	cmd.PersistentFlags().BoolVarP(
+		&flags.GetLanguage,
+		"get-language",
+		"",
+		false,
+		"Get programming language of the process",
 	)
 
 	return cmd

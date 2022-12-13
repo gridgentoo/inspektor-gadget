@@ -35,7 +35,8 @@ import (
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpfel -cc clang processCollector ./bpf/process-collector.bpf.c -- -I../../../../${TARGET} -Werror -O2 -g -c -x c
 
 type Config struct {
-	MountnsMap *ebpf.Map
+	MountnsMap  *ebpf.Map
+	GetLanguage bool
 }
 
 func RunCollector(config *Config, enricher gadgets.DataEnricher) ([]*processcollectortypes.Event, error) {
@@ -138,6 +139,11 @@ func runeBPFCollector(config *Config, enricher gadgets.DataEnricher) ([]*process
 			enricher.Enrich(&event.CommonData, event.MountNsID)
 		}
 
+		if config.GetLanguage {
+			language, _ := gadgets.GetProcessLanguage(event.Pid)
+			event.Language = language
+		}
+
 		events = append(events, &event)
 	}
 
@@ -191,6 +197,11 @@ func getPidEvents(config *Config, enricher gadgets.DataEnricher, pid int) ([]*pr
 
 		if enricher != nil {
 			enricher.Enrich(&event.CommonData, event.MountNsID)
+		}
+
+		if config.GetLanguage {
+			language, _ := gadgets.GetProcessLanguage(event.Pid)
+			event.Language = language
 		}
 
 		events = append(events, &event)
