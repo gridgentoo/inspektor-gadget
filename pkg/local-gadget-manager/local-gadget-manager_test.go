@@ -393,6 +393,7 @@ func TestDNS(t *testing.T) {
 				Pod:       "test-local-gadget-dns001",
 			},
 		},
+		Comm:       "dig",
 		ID:         "0000",
 		Qr:         dnstypes.DNSPktTypeQuery,
 		Nameserver: nameserver,
@@ -403,7 +404,10 @@ func TestDNS(t *testing.T) {
 
 	// normalize
 	id := event.ID
+	event.MountNsID = 0
 	event.ID = "0000"
+	event.Pid = 0
+	event.Tid = 0
 
 	if event != expectedEvent {
 		t.Fatalf("Received: %v, Expected: %v", event, expectedEvent)
@@ -422,7 +426,10 @@ func TestDNS(t *testing.T) {
 	if event.ID != id {
 		t.Fatalf("Response ID: %v, Expected: %v", event.ID, id)
 	}
+	event.MountNsID = 0
 	event.ID = "0000"
+	event.Pid = 0
+	event.Tid = 0
 
 	if event != expectedEvent {
 		t.Fatalf("Received: %v, Expected: %v", event, expectedEvent)

@@ -26,7 +26,7 @@ import (
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
 )
 
-//go:generate bash -c "source ./clangosflags.sh; go run github.com/cilium/ebpf/cmd/bpf2go -target bpfel -cc clang -type event_t dns ./bpf/dns.c -- $CLANG_OS_FLAGS -I./bpf/"
+//go:generate bash -c "source ./clangosflags.sh; go run github.com/cilium/ebpf/cmd/bpf2go -target bpfel -cc clang -type event_t dns ./bpf/dns.c -- $CLANG_OS_FLAGS -I./bpf/ -I../../../internal/socketenricher/bpf"
 
 const (
 	BPFProgName     = "ig_trace_dns"
@@ -185,15 +185,20 @@ func parseLabelSequence(sample []byte) (ret string) {
 }
 
 func parseDNSEvent(rawSample []byte) (*types.Event, error) {
+	bpfEvent := (*dnsEventT)(unsafe.Pointer(&rawSample[0]))
+	if len(rawSample) < int(unsafe.Sizeof(*bpfEvent)) {
+		return nil, errors.New("invalid sample size")
+	}
+
 	event := types.Event{
 		Event: eventtypes.Event{
 			Type: eventtypes.NORMAL,
 		},
-	}
 
-	bpfEvent := (*dnsEventT)(unsafe.Pointer(&rawSample[0]))
-	if len(rawSample) < int(unsafe.Sizeof(*bpfEvent)) {
-		return nil, errors.New("invalid sample size")
+		Pid:       bpfEvent.Pid,
+		Tid:       bpfEvent.Tid,
+		MountNsID: bpfEvent.MountNsId,
+		Comm:      gadgets.FromCString(bpfEvent.Task[:]),
 	}
 
 	event.ID = fmt.Sprintf("%.4x", bpfEvent.Id)

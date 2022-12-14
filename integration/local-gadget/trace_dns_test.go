@@ -34,6 +34,7 @@ func TestTraceDns(t *testing.T) {
 			expectedEntries := []*dnsTypes.Event{
 				{
 					Event:      BuildBaseEvent(ns),
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeQuery,
 					Nameserver: "8.8.4.4",
 					PktType:    "OUTGOING",
@@ -42,6 +43,7 @@ func TestTraceDns(t *testing.T) {
 				},
 				{
 					Event:      BuildBaseEvent(ns),
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeResponse,
 					Nameserver: "8.8.4.4",
 					PktType:    "HOST",
@@ -50,6 +52,7 @@ func TestTraceDns(t *testing.T) {
 				},
 				{
 					Event:      BuildBaseEvent(ns),
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeQuery,
 					Nameserver: "8.8.4.4",
 					PktType:    "OUTGOING",
@@ -58,6 +61,7 @@ func TestTraceDns(t *testing.T) {
 				},
 				{
 					Event:      BuildBaseEvent(ns),
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeResponse,
 					Nameserver: "8.8.4.4",
 					PktType:    "HOST",
@@ -73,6 +77,9 @@ func TestTraceDns(t *testing.T) {
 					e.Container = "test-pod"
 				}
 				e.ID = ""
+				e.MountNsID = 0
+				e.Pid = 0
+				e.Tid = 0
 			}
 
 			return ExpectEntriesToMatch(output, normalize, expectedEntries...)
