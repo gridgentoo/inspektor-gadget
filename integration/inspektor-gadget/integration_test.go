@@ -523,7 +523,7 @@ func TestDns(t *testing.T) {
 			expectedEntries := []*dnsTypes.Event{
 				{
 					Event:      BuildBaseEvent(ns),
-					ID:         "0000",
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeQuery,
 					Nameserver: "8.8.4.4",
 					PktType:    "OUTGOING",
@@ -532,7 +532,7 @@ func TestDns(t *testing.T) {
 				},
 				{
 					Event:      BuildBaseEvent(ns),
-					ID:         "0000",
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeResponse,
 					Nameserver: "8.8.4.4",
 					PktType:    "HOST",
@@ -542,7 +542,7 @@ func TestDns(t *testing.T) {
 				},
 				{
 					Event:      BuildBaseEvent(ns),
-					ID:         "0000",
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeQuery,
 					Nameserver: "8.8.4.4",
 					PktType:    "OUTGOING",
@@ -551,7 +551,7 @@ func TestDns(t *testing.T) {
 				},
 				{
 					Event:      BuildBaseEvent(ns),
-					ID:         "0000",
+					Comm:       "nslookup",
 					Qr:         dnsTypes.DNSPktTypeResponse,
 					Nameserver: "8.8.4.4",
 					PktType:    "HOST",
@@ -568,7 +568,10 @@ func TestDns(t *testing.T) {
 
 			normalize := func(e *dnsTypes.Event) {
 				e.Node = ""
-				e.ID = "0000"
+				e.ID = ""
+				e.MountNsID = 0
+				e.Pid = 0
+				e.Tid = 0
 			}
 
 			return ExpectEntriesToMatch(output, normalize, expectedEntries...)

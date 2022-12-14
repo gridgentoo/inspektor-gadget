@@ -14,16 +14,32 @@ import (
 )
 
 type dnsEventT struct {
-	SaddrV6 [16]uint8
-	DaddrV6 [16]uint8
-	Af      uint32
-	Id      uint16
-	Qtype   uint16
-	Qr      uint8
-	PktType uint8
-	Rcode   uint8
-	Name    [255]uint8
-	_       [2]byte
+	MountNsId uint64
+	Pid       uint32
+	Tid       uint32
+	Task      [16]uint8
+	SaddrV6   [16]uint8
+	DaddrV6   [16]uint8
+	Af        uint32
+	Id        uint16
+	Qtype     uint16
+	Qr        uint8
+	PktType   uint8
+	Rcode     uint8
+	Name      [255]uint8
+	_         [6]byte
+}
+
+type dnsSocketsKey struct {
+	Netns uint32
+	Proto uint16
+	Port  uint16
+}
+
+type dnsSocketsValue struct {
+	Mntns   uint64
+	PidTgid uint64
+	Task    [16]int8
 }
 
 // loadDns returns the embedded CollectionSpec for dns.
@@ -74,7 +90,8 @@ type dnsProgramSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type dnsMapSpecs struct {
-	Events *ebpf.MapSpec `ebpf:"events"`
+	Events  *ebpf.MapSpec `ebpf:"events"`
+	Sockets *ebpf.MapSpec `ebpf:"sockets"`
 }
 
 // dnsObjects contains all objects after they have been loaded into the kernel.
@@ -96,12 +113,14 @@ func (o *dnsObjects) Close() error {
 //
 // It can be passed to loadDnsObjects or ebpf.CollectionSpec.LoadAndAssign.
 type dnsMaps struct {
-	Events *ebpf.Map `ebpf:"events"`
+	Events  *ebpf.Map `ebpf:"events"`
+	Sockets *ebpf.Map `ebpf:"sockets"`
 }
 
 func (m *dnsMaps) Close() error {
 	return _DnsClose(
 		m.Events,
+		m.Sockets,
 	)
 }
 
