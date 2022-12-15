@@ -15,7 +15,6 @@
 package top
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -43,7 +42,6 @@ type TopLocalGadget[Stats any] struct {
 	commontop.TopGadget[Stats]
 
 	commonFlags        *utils.CommonFlags
-	stats              []*Stats
 	createAndRunTracer func(*ebpf.Map, gadgets.DataEnricher, func(*top.Event[Stats])) (trace.Tracer, error)
 }
 
@@ -102,11 +100,10 @@ func (g *TopLocalGadget[Stats]) Run(args []string) error {
 	}
 	g.CommonTopFlags.ParsedSortBy = sortByColumns
 
-	g.StartPrintLoop()
-
 	// Define a callback to be called each time there is an event.
 	eventCallback := func(event *top.Event[Stats]) {
-		g.stats = event.Stats
+		g.PrintHeader()
+		g.PrintStats(event.Stats)
 	}
 
 	gadgetTracer, err := g.createAndRunTracer(mountnsmap, &localGadgetManager.ContainerCollection, eventCallback)
@@ -120,32 +117,6 @@ func (g *TopLocalGadget[Stats]) Run(args []string) error {
 	<-stop
 
 	return nil
-}
-
-func (g *TopLocalGadget[Stats]) PrintStats() {
-	top.SortStats(g.stats, g.CommonTopFlags.ParsedSortBy, &g.ColMap)
-
-	for idx, stat := range g.stats {
-		if idx == g.CommonTopFlags.MaxRows {
-			break
-		}
-
-		outputConfig := g.Parser.GetOutputConfig()
-		switch outputConfig.OutputMode {
-		case commonutils.OutputModeJSON:
-			b, err := json.Marshal(stat)
-			if err != nil {
-				fmt.Fprint(os.Stderr, fmt.Sprint(commonutils.WrapInErrMarshalOutput(err)))
-				continue
-			}
-
-			fmt.Println(string(b))
-		case commonutils.OutputModeColumns:
-			fallthrough
-		case commonutils.OutputModeCustomColumns:
-			fmt.Println(g.Parser.TransformIntoColumns(stat))
-		}
-	}
 }
 
 func NewTopCmd() *cobra.Command {

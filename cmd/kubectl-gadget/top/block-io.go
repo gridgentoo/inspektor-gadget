@@ -45,7 +45,6 @@ func newBlockIOCmd() *cobra.Command {
 			commonFlags: commonFlags,
 			nodeStats:   make(map[string][]*types.Stats),
 		}
-		gadget.Printer = gadget
 
 		return gadget.Run(args)
 	})

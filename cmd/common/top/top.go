@@ -15,14 +15,15 @@
 package top
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/columns"
+	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top"
 
 	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
 	eventtypes "github.com/inspektor-gadget/inspektor-gadget/pkg/types"
@@ -36,10 +37,6 @@ type TopEvent interface {
 	// type set have a field f. We may remove this restriction in Go 1.19. See
 	// https://tip.golang.org/doc/go1.18#generics.
 	GetBaseEvent() *eventtypes.Event
-}
-
-type StatsPrinter interface {
-	PrintStats()
 }
 
 // TopParser defines the interface that every top-gadget parser has to
@@ -66,20 +63,6 @@ type TopGadget[Stats any] struct {
 	CommonTopFlags *CommonTopFlags
 	Parser         TopParser[Stats]
 	ColMap         columns.ColumnMap[Stats]
-
-	Printer StatsPrinter
-}
-
-func (g *TopGadget[Stats]) StartPrintLoop() {
-	go func() {
-		ticker := time.NewTicker(time.Duration(g.CommonTopFlags.OutputInterval) * time.Second)
-		g.PrintHeader()
-		for {
-			<-ticker.C
-			g.PrintHeader()
-			g.Printer.PrintStats()
-		}
-	}()
 }
 
 func (g *TopGadget[Stats]) PrintHeader() {
@@ -95,6 +78,32 @@ func (g *TopGadget[Stats]) PrintHeader() {
 	}
 
 	fmt.Println(g.Parser.BuildColumnsHeader())
+}
+
+func (g *TopGadget[Stats]) PrintStats(stats []*Stats) {
+	top.SortStats(stats, g.CommonTopFlags.ParsedSortBy, &g.ColMap)
+
+	for idx, stat := range stats {
+		if idx == g.CommonTopFlags.MaxRows {
+			break
+		}
+
+		outputConfig := g.Parser.GetOutputConfig()
+		switch outputConfig.OutputMode {
+		case commonutils.OutputModeJSON:
+			b, err := json.Marshal(stat)
+			if err != nil {
+				fmt.Fprint(os.Stderr, fmt.Sprint(commonutils.WrapInErrMarshalOutput(err)))
+				continue
+			}
+
+			fmt.Println(string(b))
+		case commonutils.OutputModeColumns:
+			fallthrough
+		case commonutils.OutputModeCustomColumns:
+			fmt.Println(g.Parser.TransformIntoColumns(stat))
+		}
+	}
 }
 
 func NewCommonTopCmd() *cobra.Command {

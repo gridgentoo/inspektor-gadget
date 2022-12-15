@@ -53,7 +53,6 @@ func newEbpfCmd() *cobra.Command {
 			commonFlags: commonFlags,
 			nodeStats:   make(map[string][]*types.Stats),
 		}
-		gadget.Printer = gadget
 
 		if commonFlags.NamespaceOverridden {
 			return commonutils.WrapInErrInvalidArg("--namespace / -n",

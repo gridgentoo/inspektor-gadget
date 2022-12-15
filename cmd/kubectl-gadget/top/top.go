@@ -21,6 +21,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -114,13 +115,25 @@ func (g *TopKubectlGadget[Stats]) Run(args []string) error {
 	}
 
 	if singleShot {
-		g.PrintStats()
+		g.mergeAndPrintStats()
 	}
 
 	return nil
 }
 
-func (g *TopKubectlGadget[Stats]) PrintStats() {
+func (g *TopKubectlGadget[Stats]) StartPrintLoop() {
+	go func() {
+		ticker := time.NewTicker(time.Duration(g.CommonTopFlags.OutputInterval) * time.Second)
+		g.PrintHeader()
+		for {
+			<-ticker.C
+			g.PrintHeader()
+			g.mergeAndPrintStats()
+		}
+	}()
+}
+
+func (g *TopKubectlGadget[Stats]) mergeAndPrintStats() {
 	// Sort and print stats
 	g.Lock()
 
@@ -132,29 +145,7 @@ func (g *TopKubectlGadget[Stats]) PrintStats() {
 
 	g.Unlock()
 
-	top.SortStats(stats, g.CommonTopFlags.ParsedSortBy, &g.ColMap)
-
-	for idx, stat := range stats {
-		if idx == g.CommonTopFlags.MaxRows {
-			break
-		}
-
-		outputConfig := g.Parser.GetOutputConfig()
-		switch outputConfig.OutputMode {
-		case commonutils.OutputModeJSON:
-			b, err := json.Marshal(stat)
-			if err != nil {
-				fmt.Fprint(os.Stderr, fmt.Sprint(commonutils.WrapInErrMarshalOutput(err)))
-				continue
-			}
-
-			fmt.Println(string(b))
-		case commonutils.OutputModeColumns:
-			fallthrough
-		case commonutils.OutputModeCustomColumns:
-			fmt.Println(g.Parser.TransformIntoColumns(stat))
-		}
-	}
+	g.PrintStats(stats)
 }
 
 func (g *TopKubectlGadget[Stats]) Callback(line string, node string) {
