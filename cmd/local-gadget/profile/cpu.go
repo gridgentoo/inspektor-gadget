@@ -15,16 +15,16 @@
 package profile
 
 import (
-	"github.com/cilium/ebpf"
 	"github.com/spf13/cobra"
 
 	commonprofile "github.com/inspektor-gadget/inspektor-gadget/cmd/common/profile"
 	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
 	"github.com/inspektor-gadget/inspektor-gadget/cmd/local-gadget/utils"
+	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/profile"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/profile/cpu/tracer"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/profile/cpu/types"
+	localgadgetmanager "github.com/inspektor-gadget/inspektor-gadget/pkg/local-gadget-manager"
 )
 
 type CPUParser struct {
@@ -47,7 +47,7 @@ func newCPUCmd() *cobra.Command {
 			return commonutils.WrapInErrParserCreate(err)
 		}
 
-		profileGadget := &ProfileGadget[types.Report]{
+		profileGadget := &ProfileGadget{
 			commonFlags: &commonFlags,
 			parser: &commonprofile.CPUParser{
 				GadgetParser: *parser,
@@ -55,8 +55,27 @@ func newCPUCmd() *cobra.Command {
 				CPUFlags:     &cpuFlags,
 			},
 			inProgressMsg: "Capturing stack traces",
-			createAndRunTracer: func(mountnsmap *ebpf.Map, enricher gadgets.DataEnricher) (profile.Tracer, error) {
-				return tracer.NewTracer(enricher, &tracer.Config{
+			createAndRunTracer: func() (profile.Tracer, error) {
+				localGadgetManager, err := localgadgetmanager.NewManager(commonFlags.RuntimeConfigs)
+				if err != nil {
+					return nil, commonutils.WrapInErrManagerInit(err)
+				}
+				defer localGadgetManager.Close()
+
+				// TODO: Improve filtering, see further details in
+				// https://github.com/inspektor-gadget/inspektor-gadget/issues/644.
+				containerSelector := containercollection.ContainerSelector{
+					Name: commonFlags.Containername,
+				}
+
+				// Create mount namespace map to filter by containers
+				mountnsmap, err := localGadgetManager.CreateMountNsMap(containerSelector)
+				if err != nil {
+					return nil, commonutils.WrapInErrManagerCreateMountNsMap(err)
+				}
+				defer localGadgetManager.RemoveMountNsMap()
+
+				return tracer.NewTracer(&localGadgetManager.ContainerCollection, &tracer.Config{
 					MountnsMap:      mountnsmap,
 					UserStackOnly:   cpuFlags.ProfileUserOnly,
 					KernelStackOnly: cpuFlags.ProfileKernelOnly,

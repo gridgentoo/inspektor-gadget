@@ -21,51 +21,28 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/cilium/ebpf"
 	"github.com/spf13/cobra"
 
 	commonprofile "github.com/inspektor-gadget/inspektor-gadget/cmd/common/profile"
 	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
 	"github.com/inspektor-gadget/inspektor-gadget/cmd/local-gadget/utils"
-	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/profile"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets"
-	localgadgetmanager "github.com/inspektor-gadget/inspektor-gadget/pkg/local-gadget-manager"
 )
 
 // ProfileGadget represents a gadget belonging to the profile category.
-type ProfileGadget[Report any] struct {
+type ProfileGadget struct {
 	commonFlags   *utils.CommonFlags
 	inProgressMsg string
 	parser        commonprofile.ProfileParser
 
 	Timeout            int
-	createAndRunTracer func(*ebpf.Map, gadgets.DataEnricher) (profile.Tracer, error)
+	createAndRunTracer func() (profile.Tracer, error)
 }
 
 // Run runs a ProfileGadget and prints the output after parsing it using the
 // ProfileParser's methods.
-func (g *ProfileGadget[Report]) Run() error {
-	localGadgetManager, err := localgadgetmanager.NewManager(g.commonFlags.RuntimeConfigs)
-	if err != nil {
-		return commonutils.WrapInErrManagerInit(err)
-	}
-	defer localGadgetManager.Close()
-
-	// TODO: Improve filtering, see further details in
-	// https://github.com/inspektor-gadget/inspektor-gadget/issues/644.
-	containerSelector := containercollection.ContainerSelector{
-		Name: g.commonFlags.Containername,
-	}
-
-	// Create mount namespace map to filter by containers
-	mountnsmap, err := localGadgetManager.CreateMountNsMap(containerSelector)
-	if err != nil {
-		return commonutils.WrapInErrManagerCreateMountNsMap(err)
-	}
-	defer localGadgetManager.RemoveMountNsMap()
-
-	gadgetTracer, err := g.createAndRunTracer(mountnsmap, &localGadgetManager.ContainerCollection)
+func (g *ProfileGadget) Run() error {
+	gadgetTracer, err := g.createAndRunTracer()
 	if err != nil {
 		return commonutils.WrapInErrGadgetTracerCreateAndRun(err)
 	}

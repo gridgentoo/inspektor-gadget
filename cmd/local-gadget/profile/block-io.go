@@ -18,16 +18,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/cilium/ebpf"
 	"github.com/spf13/cobra"
 
 	commonprofile "github.com/inspektor-gadget/inspektor-gadget/cmd/common/profile"
 	"github.com/inspektor-gadget/inspektor-gadget/cmd/local-gadget/utils"
 	containerutils "github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets/profile"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/profile/block-io/tracer"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/profile/block-io/types"
 )
 
 func newBlockIOCmd() *cobra.Command {
@@ -38,13 +35,13 @@ func newBlockIOCmd() *cobra.Command {
 			return fmt.Errorf("block-io gadget doesn't support filtering")
 		}
 
-		blockIOGadget := &ProfileGadget[types.Report]{
+		blockIOGadget := &ProfileGadget{
 			commonFlags:   &commonFlags,
 			inProgressMsg: "Tracing block device I/O",
 			parser: &commonprofile.BlockIOParser{
 				OutputConfig: commonFlags.OutputConfig,
 			},
-			createAndRunTracer: func(mountnsmap *ebpf.Map, enricher gadgets.DataEnricher) (profile.Tracer, error) {
+			createAndRunTracer: func() (profile.Tracer, error) {
 				return tracer.NewTracer()
 			},
 		}
