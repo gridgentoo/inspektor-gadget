@@ -11,7 +11,7 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
 
-#include <socket-enricher.h>
+#include <sockets-map.h>
 
 #include "snisnoop.h"
 
@@ -172,13 +172,15 @@ int ig_trace_sni(struct __sk_buff *skb)
 	}
 
 	// Enrich event with process metadata
-	event.mount_ns_id = gadget_skb_get_mntns(skb);
-	__u64 pid_tgid = gadget_skb_get_pid_tgid(skb);
-	event.pid = pid_tgid >> 32;
-	event.tid = (__u32)pid_tgid;
-	*(__u64*)event.task = gadget_skb_get_comm1(skb);
-	*(__u64*)(event.task+8) = gadget_skb_get_comm2(skb);
+	struct sockets_value *skb_val = gadget_socket_lookup(skb);
+	if (skb_val == NULL)
+		goto out;
+	event.mount_ns_id = skb_val->mntns;
+	event.pid = skb_val->pid_tgid >> 32;
+	event.tid = (__u32)skb_val->pid_tgid;
+	__builtin_memcpy(&event.task,  skb_val->task, sizeof(event.task));
 
+out:
 	bpf_perf_event_output(skb, &events, BPF_F_CURRENT_CPU, &event, sizeof(event));
 
 	return 0;

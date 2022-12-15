@@ -27,11 +27,9 @@ import (
 
 //go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target $TARGET -cc clang socketenricher ./bpf/sockets-map.bpf.c -- -I./bpf/ -I../../../ -I../../../${TARGET}
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpfel -cc clang extension ./bpf/extension.bpf.c -- -I./bpf/
-
-const (
-	BPFMapName = "sockets"
-)
+//const (
+//	BPFMapName = "sockets"
+//)
 
 // SocketEnricher creates a map exposing processes owning each socket.
 //
@@ -45,14 +43,18 @@ type SocketEnricher struct {
 	extensionSpec *ebpf.CollectionSpec
 }
 
+func (se *SocketEnricher) SocketsMap() *ebpf.Map {
+	return se.objs.Sockets
+}
+
 func NewSocketEnricher() (*SocketEnricher, error) {
 	se := &SocketEnricher{}
 
 	var err error
-	se.extensionSpec, err = loadExtension()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load extension: %w", err)
-	}
+	//	se.extensionSpec, err = loadExtension()
+	//	if err != nil {
+	//		return nil, fmt.Errorf("failed to load extension: %w", err)
+	//	}
 
 	spec, err := loadSocketenricher()
 	if err != nil {

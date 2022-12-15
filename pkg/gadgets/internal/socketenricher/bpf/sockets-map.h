@@ -20,6 +20,20 @@
 #define PACKET_OUTGOING		4
 #endif
 
+#ifndef ETH_HLEN
+#define ETH_HLEN	14
+#endif
+
+const volatile __u64 current_netns = 0;
+
+unsigned long long load_byte(void *skb,
+			     unsigned long long off) asm("llvm.bpf.load.byte");
+unsigned long long load_half(void *skb,
+			     unsigned long long off) asm("llvm.bpf.load.half");
+unsigned long long load_word(void *skb,
+			     unsigned long long off) asm("llvm.bpf.load.word");
+
+#define L4_OFF (ETH_HLEN + sizeof(struct iphdr))
 
 typedef __u32 ipv4_addr;
 
@@ -49,4 +63,27 @@ struct {
 	__type(value, struct sockets_value);
 } sockets SEC(".maps");
 
+
+static __always_inline struct sockets_value *
+gadget_socket_lookup(struct __sk_buff *skb)
+{
+	struct sockets_key key = {0,};
+	key.netns = current_netns;
+	key.proto = load_byte(skb, ETH_HLEN + offsetof(struct iphdr, protocol));
+	if (key.proto == IPPROTO_TCP) {
+		if (skb->pkt_type == PACKET_HOST)
+			key.port = load_half(skb, L4_OFF + offsetof(struct tcphdr, dest));
+		else
+			key.port = load_half(skb, L4_OFF + offsetof(struct tcphdr, source));
+	} else if (key.proto == IPPROTO_UDP) {
+		if (skb->pkt_type == PACKET_HOST)
+			key.port = load_half(skb, L4_OFF + offsetof(struct udphdr, dest));
+		else
+			key.port = load_half(skb, L4_OFF + offsetof(struct udphdr, source));
+	} else {
+		return 0;
+	}
+
+	return bpf_map_lookup_elem(&sockets, &key);
+}
 #endif

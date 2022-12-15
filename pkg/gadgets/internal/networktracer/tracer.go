@@ -78,7 +78,7 @@ func newAttachment(
 
 	spec = spec.Copy()
 
-	u32netns := uint32(netns)
+	u32netns := uint64(netns)
 	consts := map[string]interface{}{
 		"current_netns": u32netns,
 	}
@@ -87,7 +87,14 @@ func newAttachment(
 		return nil, fmt.Errorf("error RewriteConstants while attaching to pid %d: %w", pid, err)
 	}
 
-	a.collection, err = ebpf.NewCollection(spec)
+	mapReplacements := map[string]*ebpf.Map{}
+	mapReplacements["sockets"] = socketEnricher.SocketsMap()
+
+	opts := ebpf.CollectionOptions{
+		MapReplacements: mapReplacements,
+	}
+
+	a.collection, err = ebpf.NewCollectionWithOptions(spec, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create BPF collection: %w", err)
 	}
@@ -105,16 +112,6 @@ func newAttachment(
 	a.sockFd, err = rawsock.OpenRawSock(pid)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open raw socket: %w", err)
-	}
-
-	if socketEnricher != nil {
-		closer, err := socketEnricher.PlugExtension(a.collection.Programs[bpfProgName], netns)
-		if err != nil {
-			// Non fatal: an older kernel might not support bpf extensions
-			log.Debugf("failed to plug extension: %s", err)
-		} else {
-			a.plugCloser = closer
-		}
 	}
 
 	if err := syscall.SetsockoptInt(a.sockFd, syscall.SOL_SOCKET, bpfSocketAttach, prog.FD()); err != nil {
