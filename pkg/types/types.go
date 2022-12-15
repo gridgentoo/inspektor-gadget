@@ -17,6 +17,7 @@ package types
 import (
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/columns"
 )
@@ -27,6 +28,7 @@ var node string
 
 func init() {
 	// Register column templates
+	columns.MustRegisterTemplate("timestamp", "width:35,hide")
 	columns.MustRegisterTemplate("node", "width:30,ellipsis:middle")
 	columns.MustRegisterTemplate("namespace", "width:30")
 	columns.MustRegisterTemplate("pod", "width:30,ellipsis:middle")
@@ -52,7 +54,17 @@ func Init(nodeName string) {
 	node = nodeName
 }
 
+type Time int64
+
+func (t Time) String() string {
+	return time.Unix(0, int64(t)).Format(time.RFC3339Nano)
+}
+
 type CommonData struct {
+	// Timestamp in nanoseconds since January 1, 1970 UTC. A int64 is big
+	// enough to represent time between the year 1678 and 2262.
+	Timestamp Time `json:"timestamp,omitempty" column:"timestamp,template:timestamp,stringer"`
+
 	// Node where the event comes from
 	Node string `json:"node,omitempty" column:"node,template:node" columnTags:"kubernetes"`
 

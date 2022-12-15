@@ -195,6 +195,7 @@ func parseDNSEvent(rawSample []byte) (*types.Event, error) {
 	if len(rawSample) < int(unsafe.Sizeof(*bpfEvent)) {
 		return nil, errors.New("invalid sample size")
 	}
+	event.Event.CommonData.Timestamp = gadgets.WallTimeFromBootTime(bpfEvent.Timestamp)
 
 	event.ID = fmt.Sprintf("%.4x", bpfEvent.Id)
 

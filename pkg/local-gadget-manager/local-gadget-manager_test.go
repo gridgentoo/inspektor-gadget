@@ -402,6 +402,7 @@ func TestDNS(t *testing.T) {
 	}
 
 	// normalize
+	event.Timestamp = 0
 	id := event.ID
 	event.ID = "0000"
 
@@ -422,6 +423,7 @@ func TestDNS(t *testing.T) {
 	if event.ID != id {
 		t.Fatalf("Response ID: %v, Expected: %v", event.ID, id)
 	}
+	event.Timestamp = 0
 	event.ID = "0000"
 
 	if event != expectedEvent {
@@ -561,6 +563,9 @@ outerLoop:
 		if err := json.Unmarshal([]byte(result), &event); err != nil {
 			t.Fatalf("failed to unmarshal json: %s", err)
 		}
+
+		// normalize
+		event.Timestamp = 0
 
 		// Network graph does not guarantee the order where the events are received.
 		// So, we check if the received event is part of the expected events.

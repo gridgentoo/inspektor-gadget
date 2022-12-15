@@ -147,6 +147,9 @@ func (t *Tracer) run() {
 		event := types.Event{
 			Event: eventtypes.Event{
 				Type: eventtypes.NORMAL,
+				CommonData: eventtypes.CommonData{
+					Timestamp: gadgets.WallTimeFromBootTime(bpfEvent.Timestamp),
+				},
 			},
 			Pid:       bpfEvent.Pid,
 			Ppid:      bpfEvent.Ppid,
