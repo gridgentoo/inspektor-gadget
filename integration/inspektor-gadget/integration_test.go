@@ -345,7 +345,7 @@ EOF
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestBindsnoop(t *testing.T) {
@@ -386,7 +386,7 @@ func TestBindsnoop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestBiolatency(t *testing.T) {
@@ -411,7 +411,7 @@ func TestBiolatency(t *testing.T) {
 		},
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestBiotop(t *testing.T) {
@@ -457,7 +457,7 @@ func TestBiotop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestCapabilities(t *testing.T) {
@@ -504,7 +504,7 @@ func TestCapabilities(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestDns(t *testing.T) {
@@ -580,7 +580,7 @@ func TestDns(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestEbpftop(t *testing.T) {
@@ -629,7 +629,7 @@ func TestEbpftop(t *testing.T) {
 		ebpftopCmd,
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestExecsnoop(t *testing.T) {
@@ -693,7 +693,7 @@ func TestExecsnoop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestFiletop(t *testing.T) {
@@ -736,7 +736,7 @@ func TestFiletop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestFsslower(t *testing.T) {
@@ -782,7 +782,7 @@ func TestFsslower(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestMountsnoop(t *testing.T) {
@@ -828,7 +828,7 @@ func TestMountsnoop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestNetworkpolicy(t *testing.T) {
@@ -945,7 +945,7 @@ spec:
 		},
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestOomkill(t *testing.T) {
@@ -1009,7 +1009,7 @@ spec:
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestOpensnoop(t *testing.T) {
@@ -1050,7 +1050,7 @@ func TestOpensnoop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestNetworkGraph(t *testing.T) {
@@ -1064,7 +1064,7 @@ func TestNetworkGraph(t *testing.T) {
 		WaitUntilPodReadyCommand(ns, "nginx-pod"),
 	}
 
-	RunCommands(commandsPreTest, t)
+	RunOperations(commandsPreTest, t)
 	NginxIP := GetTestPodIP(ns, "nginx-pod")
 
 	networkGraphCmd := &Command{
@@ -1106,7 +1106,7 @@ func TestNetworkGraph(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestProcessCollector(t *testing.T) {
@@ -1148,7 +1148,7 @@ func TestProcessCollector(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestCpuProfile(t *testing.T) {
@@ -1183,7 +1183,7 @@ func TestCpuProfile(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestSeccompadvisor(t *testing.T) {
@@ -1203,7 +1203,7 @@ func TestSeccompadvisor(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestSigsnoop(t *testing.T) {
@@ -1242,7 +1242,7 @@ func TestSigsnoop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestSnisnoop(t *testing.T) {
@@ -1279,7 +1279,7 @@ func TestSnisnoop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestSocketCollector(t *testing.T) {
@@ -1328,7 +1328,7 @@ func TestSocketCollector(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestTcpconnect(t *testing.T) {
@@ -1342,7 +1342,7 @@ func TestTcpconnect(t *testing.T) {
 		WaitUntilPodReadyCommand(ns, "nginx-pod"),
 	}
 
-	RunCommands(commandsPreTest, t)
+	RunOperations(commandsPreTest, t)
 	NginxIP := GetTestPodIP(ns, "nginx-pod")
 
 	tcpconnectCmd := &Command{
@@ -1378,7 +1378,7 @@ func TestTcpconnect(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestTcptracer(t *testing.T) {
@@ -1392,7 +1392,7 @@ func TestTcptracer(t *testing.T) {
 		WaitUntilPodReadyCommand(ns, "nginx-pod"),
 	}
 
-	RunCommands(commandsPreTest, t)
+	RunOperations(commandsPreTest, t)
 	NginxIP := GetTestPodIP(ns, "nginx-pod")
 
 	tcptracerCmd := &Command{
@@ -1430,7 +1430,7 @@ func TestTcptracer(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestTcptop(t *testing.T) {
@@ -1444,7 +1444,7 @@ func TestTcptop(t *testing.T) {
 		WaitUntilPodReadyCommand(ns, "nginx-pod"),
 	}
 
-	RunCommands(commandsPreTest, t)
+	RunOperations(commandsPreTest, t)
 	NginxIP := GetTestPodIP(ns, "nginx-pod")
 
 	tcptopCmd := &Command{
@@ -1483,7 +1483,7 @@ func TestTcptop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestTraceloop(t *testing.T) {
@@ -1537,5 +1537,5 @@ func TestTraceloop(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }

@@ -24,7 +24,6 @@ import (
 	"strings"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/kr/pretty"
 )
@@ -75,6 +74,18 @@ type Command struct {
 
 	// stderr contains command standard output when started using Startcommand().
 	stderr bytes.Buffer
+}
+
+func (c *Command) IsCleanup() bool {
+	return c.Cleanup
+}
+
+func (c *Command) IsStartAndStop() bool {
+	return c.StartAndStop
+}
+
+func (c *Command) Running() bool {
+	return c.Started
 }
 
 // DeployInspektorGadget deploys inspector gadget in Kubernetes
@@ -192,7 +203,7 @@ var CleanupSPO = []*Command{
 		  if [ -z $NAMESPACES ]; then
 		    break
 		  fi
- 
+
 		  # Patch profiles in each namespace, ignore any errors since it can already be deleted.
 		  for NAMESPACE in $NAMESPACES; do
 		    PROFILES=$(kubectl get seccompprofile --namespace $NAMESPACE -o name)
@@ -207,39 +218,6 @@ var CleanupSPO = []*Command{
 		`,
 		Cleanup: true,
 	},
-}
-
-// RunCommands is used to run a list of commands with stopping/clean up logic.
-func RunCommands(cmds []*Command, t *testing.T) {
-	// defer all cleanup commands so we are sure to exit clean whatever
-	// happened
-	defer func() {
-		for _, cmd := range cmds {
-			if cmd.Cleanup {
-				cmd.Run(t)
-			}
-		}
-	}()
-
-	// defer stopping commands
-	defer func() {
-		for _, cmd := range cmds {
-			if cmd.StartAndStop && cmd.Started {
-				// Wait a bit before stopping the command.
-				time.Sleep(10 * time.Second)
-				cmd.Stop(t)
-			}
-		}
-	}()
-
-	// run all commands but cleanup ones
-	for _, cmd := range cmds {
-		if cmd.Cleanup {
-			continue
-		}
-
-		cmd.Run(t)
-	}
 }
 
 // createExecCmd creates an exec.Cmd for the command c.Cmd and stores it in
@@ -450,11 +428,6 @@ func (c *Command) KillWithoutTest() error {
 func (c *Command) Run(t *testing.T) {
 	c.createExecCmd()
 
-	if c.StartAndStop {
-		c.Start(t)
-		return
-	}
-
 	t.Logf("Run command(%s):\n%s\n", c.Name, c.Cmd)
 	err := c.command.Run()
 	t.Logf("Command returned(%s):\n%s\n%s\n",
@@ -477,6 +450,8 @@ func (c *Command) Start(t *testing.T) {
 		t.Logf("Warn(%s): trying to start command but it was already Started\n", c.Name)
 		return
 	}
+
+	c.createExecCmd()
 
 	t.Logf("Start command(%s): %s\n", c.Name, c.Cmd)
 	err := c.command.Start()

@@ -70,7 +70,7 @@ func TestListContainers(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestFilterByContainerName(t *testing.T) {
@@ -122,7 +122,7 @@ func TestFilterByContainerName(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
 
 func TestWatchContainers(t *testing.T) {
@@ -176,5 +176,5 @@ func TestWatchContainers(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }

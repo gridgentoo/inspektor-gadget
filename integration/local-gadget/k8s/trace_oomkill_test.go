@@ -88,5 +88,5 @@ spec:
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }

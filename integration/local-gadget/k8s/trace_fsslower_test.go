@@ -68,5 +68,5 @@ func TestTraceFsslower(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }

@@ -32,7 +32,7 @@ func TestTraceTcpconnect(t *testing.T) {
 		WaitUntilPodReadyCommand(ns, "nginx-pod"),
 	}
 
-	RunCommands(commandsPreTest, t)
+	RunOperations(commandsPreTest, t)
 	NginxIP := GetTestPodIP(ns, "nginx-pod")
 
 	tcpconnectCmd := &Command{
@@ -74,5 +74,5 @@ func TestTraceTcpconnect(t *testing.T) {
 		DeleteTestNamespaceCommand(ns),
 	}
 
-	RunCommands(commands, t)
+	RunOperations(commands, t)
 }
