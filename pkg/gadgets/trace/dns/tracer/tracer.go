@@ -38,22 +38,25 @@ type Tracer struct {
 	*networktracer.Tracer[types.Event]
 }
 
-func NewTracer() (*Tracer, error) {
+func NewTracer(enricher gadgets.DataEnricher) (*Tracer, error) {
 	spec, err := loadDns()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load asset: %w", err)
 	}
 
-	return &Tracer{
+	t := &Tracer{
 		Tracer: networktracer.NewTracer(
 			spec,
 			BPFProgName,
 			BPFPerfMapName,
 			BPFSocketAttach,
+			enricher,
 			types.Base,
-			parseDNSEvent,
 		),
-	}, nil
+	}
+	t.Parser = t
+
+	return t, nil
 }
 
 // pkt_type definitions:
@@ -184,7 +187,7 @@ func parseLabelSequence(sample []byte) (ret string) {
 	return ret
 }
 
-func parseDNSEvent(rawSample []byte) (*types.Event, error) {
+func (t *Tracer) ParseEvent(rawSample []byte) (*types.Event, error) {
 	bpfEvent := (*dnsEventT)(unsafe.Pointer(&rawSample[0]))
 	if len(rawSample) < int(unsafe.Sizeof(*bpfEvent)) {
 		return nil, errors.New("invalid sample size")
@@ -234,6 +237,10 @@ func parseDNSEvent(rawSample []byte) (*types.Event, error) {
 	event.QType, ok = qTypeNames[qTypeUint]
 	if !ok {
 		event.QType = "UNASSIGNED"
+	}
+
+	if t.Enricher != nil {
+		t.Enricher.Enrich(&event.CommonData, event.MountNsID)
 	}
 
 	return &event, nil

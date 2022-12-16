@@ -59,18 +59,11 @@ func newSNICmd() *cobra.Command {
 			return commonutils.WrapInErrParserCreate(err)
 		}
 
-		eventCallback := func(container *containercollection.Container, event sniTypes.Event) {
+		eventCallback := func(event sniTypes.Event) {
 			baseEvent := event.GetBaseEvent()
 			if baseEvent.Type != eventtypes.NORMAL {
 				commonutils.HandleSpecialEvent(baseEvent, commonFlags.Verbose)
 				return
-			}
-
-			// Enrich with data from container
-			if !container.HostNetwork {
-				event.Namespace = container.Namespace
-				event.Pod = container.Podname
-				event.Container = container.Name
 			}
 
 			switch commonFlags.OutputMode {
@@ -89,7 +82,7 @@ func newSNICmd() *cobra.Command {
 			}
 		}
 
-		tracer, err := sniTracer.NewTracer()
+		tracer, err := sniTracer.NewTracer(&localGadgetManager.ContainerCollection)
 		if err != nil {
 			return commonutils.WrapInErrGadgetTracerCreateAndRun(err)
 		}

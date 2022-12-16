@@ -59,18 +59,11 @@ func newDNSCmd() *cobra.Command {
 			return commonutils.WrapInErrParserCreate(err)
 		}
 
-		eventCallback := func(container *containercollection.Container, event dnsTypes.Event) {
+		eventCallback := func(event dnsTypes.Event) {
 			baseEvent := event.GetBaseEvent()
 			if baseEvent.Type != eventtypes.NORMAL {
 				commonutils.HandleSpecialEvent(baseEvent, commonFlags.Verbose)
 				return
-			}
-
-			// Enrich with data from container
-			if !container.HostNetwork {
-				event.Namespace = container.Namespace
-				event.Pod = container.Podname
-				event.Container = container.Name
 			}
 
 			switch commonFlags.OutputMode {
@@ -89,7 +82,7 @@ func newDNSCmd() *cobra.Command {
 			}
 		}
 
-		tracer, err := dnsTracer.NewTracer()
+		tracer, err := dnsTracer.NewTracer(&localGadgetManager.ContainerCollection)
 		if err != nil {
 			return commonutils.WrapInErrGadgetTracerCreateAndRun(err)
 		}

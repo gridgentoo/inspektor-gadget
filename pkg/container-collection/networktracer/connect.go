@@ -40,7 +40,7 @@ type ConnectToContainerCollectionConfig[Event any] struct {
 	Tracer        Tracer[Event]
 	Resolver      containercollection.ContainerResolver
 	Selector      containercollection.ContainerSelector
-	EventCallback func(*containercollection.Container, Event)
+	EventCallback func(Event)
 	Base          func(eventtypes.Event) Event
 }
 
@@ -62,26 +62,45 @@ func ConnectToContainerCollection[Event any](
 	base := config.Base
 
 	attachContainerFunc := func(container *containercollection.Container) {
-		cbWithContainer := func(ev Event) {
-			eventCallback(container, ev)
-		}
-		err := tracer.Attach(container.Pid, cbWithContainer)
+		err := tracer.Attach(container.Pid, eventCallback)
 		if err != nil {
-			msg := fmt.Sprintf("start tracing container %q: %s", container.Name, err)
-			eventCallback(container, base(eventtypes.Err(msg)))
+			ev := eventtypes.Err(
+				fmt.Sprintf("start tracing container %q: %s", container.Name, err),
+				eventtypes.WithNamespace(container.Namespace),
+				eventtypes.WithPod(container.Podname),
+				eventtypes.WithContainer(container.Name),
+			)
+			eventCallback(base(ev))
 			return
 		}
-		eventCallback(container, base(eventtypes.Debug("tracer attached")))
+		ev := eventtypes.Debug(
+			"tracer attached",
+			eventtypes.WithNamespace(container.Namespace),
+			eventtypes.WithPod(container.Podname),
+			eventtypes.WithContainer(container.Name),
+		)
+		eventCallback(base(ev))
 	}
 
 	detachContainerFunc := func(container *containercollection.Container) {
 		err := tracer.Detach(container.Pid)
 		if err != nil {
-			msg := fmt.Sprintf("stop tracing container %q: %s", container.Name, err)
-			eventCallback(container, base(eventtypes.Err(msg)))
+			ev := eventtypes.Err(
+				fmt.Sprintf("stop tracing container %q: %s", container.Name, err),
+				eventtypes.WithNamespace(container.Namespace),
+				eventtypes.WithPod(container.Podname),
+				eventtypes.WithContainer(container.Name),
+			)
+			eventCallback(base(ev))
 			return
 		}
-		eventCallback(container, base(eventtypes.Debug("tracer detached")))
+		ev := eventtypes.Debug(
+			"tracer detached",
+			eventtypes.WithNamespace(container.Namespace),
+			eventtypes.WithPod(container.Podname),
+			eventtypes.WithContainer(container.Name),
+		)
+		eventCallback(base(ev))
 	}
 
 	containers := resolver.Subscribe(

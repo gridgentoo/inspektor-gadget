@@ -105,44 +105,88 @@ func (e Event) GetBaseEvent() *Event {
 	return &e
 }
 
-func Err(msg string) Event {
-	return Event{
+type Option func(*Event)
+
+func WithNamespace(namespace string) Option {
+	return func(e *Event) {
+		e.Namespace = namespace
+	}
+}
+
+func WithPod(podname string) Option {
+	return func(e *Event) {
+		e.Pod = podname
+	}
+}
+
+func WithContainer(containername string) Option {
+	return func(e *Event) {
+		e.Container = containername
+	}
+}
+
+func Err(msg string, options ...Option) Event {
+	ev := Event{
 		CommonData: CommonData{
 			Node: node,
 		},
 		Type:    ERR,
 		Message: msg,
 	}
+
+	for _, opt := range options {
+		opt(&ev)
+	}
+
+	return ev
 }
 
-func Warn(msg string) Event {
-	return Event{
+func Warn(msg string, options ...Option) Event {
+	ev := Event{
 		CommonData: CommonData{
 			Node: node,
 		},
 		Type:    WARN,
 		Message: msg,
 	}
+
+	for _, opt := range options {
+		opt(&ev)
+	}
+
+	return ev
 }
 
-func Debug(msg string) Event {
-	return Event{
+func Debug(msg string, options ...Option) Event {
+	ev := Event{
 		CommonData: CommonData{
 			Node: node,
 		},
 		Type:    DEBUG,
 		Message: msg,
 	}
+
+	for _, opt := range options {
+		opt(&ev)
+	}
+
+	return ev
 }
 
-func Info(msg string) Event {
-	return Event{
+func Info(msg string, options ...Option) Event {
+	ev := Event{
 		CommonData: CommonData{
 			Node: node,
 		},
 		Type:    INFO,
 		Message: msg,
 	}
+
+	for _, opt := range options {
+		opt(&ev)
+	}
+
+	return ev
 }
 
 func EventString(i interface{}) string {

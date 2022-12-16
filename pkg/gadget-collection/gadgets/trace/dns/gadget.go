@@ -20,7 +20,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	gadgetv1alpha1 "github.com/inspektor-gadget/inspektor-gadget/pkg/apis/gadget/v1alpha1"
-	containercollection "github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/container-collection/networktracer"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadget-collection/gadgets"
 	dnsTracer "github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/trace/dns/tracer"
@@ -93,14 +92,6 @@ func (f *TraceFactory) Operations() map[gadgetv1alpha1.Operation]gadgets.TraceOp
 	}
 }
 
-func (t *Trace) publishEvent(trace *gadgetv1alpha1.Trace, event *dnsTypes.Event) {
-	traceName := gadgets.TraceName(trace.ObjectMeta.Namespace, trace.ObjectMeta.Name)
-	t.helpers.PublishEvent(
-		traceName,
-		eventtypes.EventString(event),
-	)
-}
-
 func (t *Trace) Start(trace *gadgetv1alpha1.Trace) {
 	if t.started {
 		trace.Status.State = gadgetv1alpha1.TraceStateStarted
@@ -108,21 +99,18 @@ func (t *Trace) Start(trace *gadgetv1alpha1.Trace) {
 	}
 
 	var err error
-	t.tracer, err = dnsTracer.NewTracer()
+	t.tracer, err = dnsTracer.NewTracer(t.helpers)
 	if err != nil {
 		trace.Status.OperationError = fmt.Sprintf("Failed to start dns tracer: %s", err)
 		return
 	}
 
-	eventCallback := func(container *containercollection.Container, event dnsTypes.Event) {
-		// Enrich event with data from container
-		event.Node = trace.Spec.Node
-		if !container.HostNetwork {
-			event.Namespace = container.Namespace
-			event.Pod = container.Podname
-		}
-
-		t.publishEvent(trace, &event)
+	eventCallback := func(event dnsTypes.Event) {
+		traceName := gadgets.TraceName(trace.ObjectMeta.Namespace, trace.ObjectMeta.Name)
+		t.helpers.PublishEvent(
+			traceName,
+			eventtypes.EventString(&event),
+		)
 	}
 
 	config := &networktracer.ConnectToContainerCollectionConfig[dnsTypes.Event]{

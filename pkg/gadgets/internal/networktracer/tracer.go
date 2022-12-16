@@ -124,6 +124,10 @@ func newAttachment(
 	return a, nil
 }
 
+type Parser[Event any] interface {
+	ParseEvent([]byte) (*Event, error)
+}
+
 type Tracer[Event any] struct {
 	socketEnricher *socketenricher.SocketEnricher
 	spec           *ebpf.CollectionSpec
@@ -136,8 +140,9 @@ type Tracer[Event any] struct {
 	bpfPerfMapName  string
 	bpfSocketAttach int
 
-	baseEvent  func(ev types.Event) Event
-	parseEvent func([]byte) (*Event, error)
+	baseEvent func(ev types.Event) Event
+	Parser    Parser[Event]
+	Enricher  gadgets.DataEnricher
 }
 
 func NewTracer[Event any](
@@ -145,8 +150,8 @@ func NewTracer[Event any](
 	bpfProgName string,
 	bpfPerfMapName string,
 	bpfSocketAttach int,
+	enricher gadgets.DataEnricher,
 	baseEvent func(ev types.Event) Event,
-	parseEvent func([]byte) (*Event, error),
 ) *Tracer[Event] {
 	socketEnricher, err := socketenricher.NewSocketEnricher()
 	if err != nil {
@@ -160,8 +165,8 @@ func NewTracer[Event any](
 		bpfProgName:     bpfProgName,
 		bpfPerfMapName:  bpfPerfMapName,
 		bpfSocketAttach: bpfSocketAttach,
+		Enricher:        enricher,
 		baseEvent:       baseEvent,
-		parseEvent:      parseEvent,
 	}
 }
 
@@ -181,7 +186,7 @@ func (t *Tracer[Event]) Attach(pid uint32, eventCallback func(Event)) error {
 	}
 	t.attachments[netns] = a
 
-	go t.listen(netns, a.perfRd, t.baseEvent, t.parseEvent, eventCallback)
+	go t.listen(netns, a.perfRd, eventCallback)
 
 	return nil
 }
@@ -189,8 +194,6 @@ func (t *Tracer[Event]) Attach(pid uint32, eventCallback func(Event)) error {
 func (t *Tracer[Event]) listen(
 	netns uint64,
 	rd *perf.Reader,
-	baseEvent func(ev types.Event) Event,
-	parseEvent func([]byte) (*Event, error),
 	eventCallback func(Event),
 ) {
 	for {
@@ -201,19 +204,22 @@ func (t *Tracer[Event]) listen(
 			}
 
 			msg := fmt.Sprintf("Error reading perf ring buffer (%d): %s", netns, err)
-			eventCallback(baseEvent(types.Err(msg)))
+			eventCallback(t.baseEvent(types.Err(msg)))
 			return
 		}
 
 		if record.LostSamples != 0 {
 			msg := fmt.Sprintf("lost %d samples (%d)", record.LostSamples, netns)
-			eventCallback(baseEvent(types.Warn(msg)))
+			eventCallback(t.baseEvent(types.Warn(msg)))
 			continue
 		}
 
-		event, err := parseEvent(record.RawSample)
+		if t.Parser == nil {
+			continue
+		}
+		event, err := t.Parser.ParseEvent(record.RawSample)
 		if err != nil {
-			eventCallback(baseEvent(types.Err(err.Error())))
+			eventCallback(t.baseEvent(types.Err(err.Error())))
 			continue
 		}
 		if event == nil {

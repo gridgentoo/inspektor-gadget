@@ -43,12 +43,7 @@ type Event struct {
 }
 
 func GetColumns() *columns.Columns[Event] {
-	cols := columns.MustCreateColumns[Event]()
-
-	col, _ := cols.GetColumn("container")
-	col.Visible = false
-
-	return cols
+	return columns.MustCreateColumns[Event]()
 }
 
 func Base(ev eventtypes.Event) Event {

@@ -37,25 +37,28 @@ type Tracer struct {
 	*networktracer.Tracer[types.Event]
 }
 
-func NewTracer() (*Tracer, error) {
+func NewTracer(enricher gadgets.DataEnricher) (*Tracer, error) {
 	spec, err := loadSnisnoop()
 	if err != nil {
 		return nil, fmt.Errorf("failed to load asset: %w", err)
 	}
 
-	return &Tracer{
+	t := &Tracer{
 		Tracer: networktracer.NewTracer(
 			spec,
 			BPFProgName,
 			BPFPerfMapName,
 			BPFSocketAttach,
+			enricher,
 			types.Base,
-			parseSNIEvent,
 		),
-	}, nil
+	}
+	t.Parser = t
+
+	return t, nil
 }
 
-func parseSNIEvent(sample []byte) (*types.Event, error) {
+func (t *Tracer) ParseEvent(sample []byte) (*types.Event, error) {
 	bpfEvent := (*snisnoopEventT)(unsafe.Pointer(&sample[0]))
 
 	name := gadgets.FromCString(bpfEvent.Name[:])
@@ -71,8 +74,11 @@ func parseSNIEvent(sample []byte) (*types.Event, error) {
 		Tid:       bpfEvent.Tid,
 		MountNsID: bpfEvent.MountNsId,
 		Comm:      gadgets.FromCString(bpfEvent.Task[:]),
+		Name:      gadgets.FromCString(bpfEvent.Name[:]),
+	}
 
-		Name: gadgets.FromCString(bpfEvent.Name[:]),
+	if t.Enricher != nil {
+		t.Enricher.Enrich(&event.CommonData, event.MountNsID)
 	}
 
 	return &event, nil
