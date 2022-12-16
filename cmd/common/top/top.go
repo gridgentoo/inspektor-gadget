@@ -49,9 +49,6 @@ type TopParser[Stats any] interface {
 	// present the output in columns.
 	BuildColumnsHeader() string
 	TransformIntoColumns(*Stats) string
-
-	// GetOutputConfig returns the output configuration.
-	GetOutputConfig() *commonutils.OutputConfig
 }
 
 type CommonTopFlags struct {
@@ -64,6 +61,7 @@ type CommonTopFlags struct {
 type TopGadget[Stats any] struct {
 	Name           string
 	CommonTopFlags *CommonTopFlags
+	OutputConfig   *commonutils.OutputConfig
 	Parser         TopParser[Stats]
 	ColMap         columns.ColumnMap[Stats]
 
@@ -83,8 +81,7 @@ func (g *TopGadget[Stats]) StartPrintLoop() {
 }
 
 func (g *TopGadget[Stats]) PrintHeader() {
-	outputConfig := g.Parser.GetOutputConfig()
-	if outputConfig.OutputMode == commonutils.OutputModeJSON {
+	if g.OutputConfig.OutputMode == commonutils.OutputModeJSON {
 		return
 	}
 

@@ -19,48 +19,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/columns"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top/block-io/types"
 )
 
-type BlockIOParser struct {
-	commonutils.GadgetParser[types.Stats]
-
-	outputConfig *commonutils.OutputConfig
-}
-
-func newBlockIOParser(outputConfig *commonutils.OutputConfig, flags *CommonTopFlags, cols *columns.Columns[types.Stats], options ...commonutils.Option) (TopParser[types.Stats], error) {
-	gadgetParser, err := commonutils.NewGadgetParser(outputConfig, cols, options...)
-	if err != nil {
-		return nil, commonutils.WrapInErrParserCreate(err)
-	}
-
-	return &BlockIOParser{
-		GadgetParser: *gadgetParser,
-		outputConfig: outputConfig,
-	}, nil
-}
-
-func NewBlockIOParserWithK8sInfo(outputConfig *commonutils.OutputConfig, flags *CommonTopFlags) (TopParser[types.Stats], error) {
-	return newBlockIOParser(outputConfig, flags, types.GetColumns(), commonutils.WithMetadataTag(commonutils.KubernetesTag))
-}
-
-func NewBlockIOParserWithRuntimeInfo(outputConfig *commonutils.OutputConfig, flags *CommonTopFlags) (TopParser[types.Stats], error) {
-	return newBlockIOParser(outputConfig, flags, types.GetColumns(), commonutils.WithMetadataTag(commonutils.ContainerRuntimeTag))
-}
-
-func (s *BlockIOParser) GetOutputConfig() *commonutils.OutputConfig {
-	return s.outputConfig
-}
-
 func NewBlockIOCmd(runCmd func(*cobra.Command, []string) error) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   fmt.Sprintf("block-io [interval=%d]", top.IntervalDefault),
 		Short: "Periodically report block device I/O activity",
 		RunE:  runCmd,
 	}
-
-	return cmd
 }

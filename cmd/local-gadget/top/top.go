@@ -130,8 +130,7 @@ func (g *TopLocalGadget[Stats]) PrintStats() {
 			break
 		}
 
-		outputConfig := g.Parser.GetOutputConfig()
-		switch outputConfig.OutputMode {
+		switch g.OutputConfig.OutputMode {
 		case commonutils.OutputModeJSON:
 			b, err := json.Marshal(stat)
 			if err != nil {

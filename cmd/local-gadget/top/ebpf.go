@@ -43,7 +43,7 @@ func newEbpfCmd() *cobra.Command {
 			return err
 		}
 
-		parser, err := commontop.NewEbpfParserWithRuntimeInfo(&commonFlags.OutputConfig, &flags)
+		parser, err := commonutils.NewGadgetParserWithRuntimeInfo(&commonFlags.OutputConfig, cols)
 		if err != nil {
 			return commonutils.WrapInErrParserCreate(err)
 		}
@@ -52,6 +52,7 @@ func newEbpfCmd() *cobra.Command {
 			TopGadget: commontop.TopGadget[types.Stats]{
 				Name:           "ebpftop",
 				CommonTopFlags: &flags,
+				OutputConfig:   &commonFlags.OutputConfig,
 				Parser:         parser,
 				ColMap:         cols.GetColumnMap(),
 			},

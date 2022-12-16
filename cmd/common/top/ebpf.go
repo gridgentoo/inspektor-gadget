@@ -19,47 +19,13 @@ import (
 
 	"github.com/spf13/cobra"
 
-	commonutils "github.com/inspektor-gadget/inspektor-gadget/cmd/common/utils"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/columns"
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top"
-	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/top/ebpf/types"
 )
 
-type EbpfParser struct {
-	commonutils.GadgetParser[types.Stats]
-	outputConfig *commonutils.OutputConfig
-}
-
-func newEbpfParser(outputConfig *commonutils.OutputConfig, flags *CommonTopFlags, cols *columns.Columns[types.Stats], options ...commonutils.Option) (TopParser[types.Stats], error) {
-	gadgetParser, err := commonutils.NewGadgetParser(outputConfig, cols, options...)
-	if err != nil {
-		return nil, commonutils.WrapInErrParserCreate(err)
-	}
-
-	return &EbpfParser{
-		GadgetParser: *gadgetParser,
-		outputConfig: outputConfig,
-	}, nil
-}
-
-func NewEbpfParserWithK8sInfo(outputConfig *commonutils.OutputConfig, flags *CommonTopFlags) (TopParser[types.Stats], error) {
-	return newEbpfParser(outputConfig, flags, types.GetColumns(), commonutils.WithMetadataTag(commonutils.KubernetesTag))
-}
-
-func NewEbpfParserWithRuntimeInfo(outputConfig *commonutils.OutputConfig, flags *CommonTopFlags) (TopParser[types.Stats], error) {
-	return newEbpfParser(outputConfig, flags, types.GetColumns(), commonutils.WithMetadataTag(commonutils.ContainerRuntimeTag))
-}
-
-func (s *EbpfParser) GetOutputConfig() *commonutils.OutputConfig {
-	return s.outputConfig
-}
-
 func NewEbpfCmd(runCmd func(*cobra.Command, []string) error) *cobra.Command {
-	cmd := &cobra.Command{
+	return &cobra.Command{
 		Use:   fmt.Sprintf("ebpf [interval=%d]", top.IntervalDefault),
 		Short: "Periodically report ebpf runtime stats",
 		RunE:  runCmd,
 	}
-
-	return cmd
 }

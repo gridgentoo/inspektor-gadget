@@ -30,7 +30,7 @@ func newBlockIOCmd() *cobra.Command {
 	cols := types.GetColumns()
 
 	cmd := commontop.NewBlockIOCmd(func(cmd *cobra.Command, args []string) error {
-		parser, err := commontop.NewBlockIOParserWithK8sInfo(&commonFlags.OutputConfig, &flags)
+		parser, err := commonutils.NewGadgetParserWithK8sInfo(&commonFlags.OutputConfig, cols)
 		if err != nil {
 			return commonutils.WrapInErrParserCreate(err)
 		}
@@ -39,6 +39,7 @@ func newBlockIOCmd() *cobra.Command {
 			TopGadget: commontop.TopGadget[types.Stats]{
 				Name:           "biotop",
 				CommonTopFlags: &flags,
+				OutputConfig:   &commonFlags.OutputConfig,
 				Parser:         parser,
 				ColMap:         cols.GetColumnMap(),
 			},
