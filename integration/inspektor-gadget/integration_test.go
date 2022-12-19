@@ -372,6 +372,7 @@ func TestBindsnoop(t *testing.T) {
 			}
 
 			normalize := func(e *bindTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.MountNsID = 0
@@ -487,6 +488,7 @@ func TestCapabilities(t *testing.T) {
 			}
 
 			normalize := func(e *capabilitiesTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.UID = 0
@@ -567,6 +569,7 @@ func TestDns(t *testing.T) {
 			}
 
 			normalize := func(e *dnsTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.ID = "0000"
 			}
@@ -676,6 +679,7 @@ func TestExecsnoop(t *testing.T) {
 			}
 
 			normalize := func(e *execTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.Ppid = 0
@@ -765,6 +769,7 @@ func TestFsslower(t *testing.T) {
 			}
 
 			normalize := func(e *fsslowerType.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.MountNsID = 0
 				e.Pid = 0
@@ -808,6 +813,7 @@ func TestMountsnoop(t *testing.T) {
 			}
 
 			normalize := func(e *mountTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.Tid = 0
@@ -858,7 +864,7 @@ func TestNetworkpolicy(t *testing.T) {
 					sleep 10
 					kill $!
 					head networktrace-client.log | sort | uniq`, nsClient),
-			ExpectedRegexp: fmt.Sprintf(`{"node":".*","namespace":"%s","pod":"test-pod","container":"test-pod","type":"normal","pktType":"OUTGOING","proto":"tcp","port":9090,"podHostIP":".*","podIP":".*","podLabels":{"run":"test-pod"},"remoteKind":"svc","remoteAddr":".*","remoteName":"test-pod","remoteNamespace":"%s","remoteLabels":{"run":"test-pod"}}`, nsClient, nsServer),
+			ExpectedRegexp: fmt.Sprintf(`{.*"node":".*","namespace":"%s","pod":"test-pod","container":"test-pod","timestamp":.*,"type":"normal","pktType":"OUTGOING","proto":"tcp","port":9090,"podHostIP":".*","podIP":".*","podLabels":{"run":"test-pod"},"remoteKind":"svc","remoteAddr":".*","remoteName":"test-pod","remoteNamespace":"%s","remoteLabels":{"run":"test-pod"}}`, nsClient, nsServer),
 		},
 		{
 			// Docker bridge does not preserve source IP :-(
@@ -870,7 +876,7 @@ func TestNetworkpolicy(t *testing.T) {
 					kill $!
 					head networktrace-server.log | sort | uniq
 					kubectl get node -o jsonpath='{.items[0].status.nodeInfo.containerRuntimeVersion}'|grep -q docker && echo SKIP_TEST || true`, nsServer),
-			ExpectedRegexp: fmt.Sprintf(`SKIP_TEST|{"node":".*","namespace":"%s","pod":"test-pod","container":"test-pod","type":"normal","pktType":"HOST","proto":"tcp","port":9090,"podHostIP":".*","podIP":".*","podLabels":{"run":"test-pod"},"remoteKind":"pod","remoteAddr":".*","remoteName":"test-pod","remoteNamespace":"%s","remoteLabels":{"run":"test-pod"}}`, nsServer, nsClient),
+			ExpectedRegexp: fmt.Sprintf(`SKIP_TEST|{.*"node":".*","namespace":"%s","pod":"test-pod","container":"test-pod","timestamp":.*,"type":"normal","pktType":"HOST","proto":"tcp","port":9090,"podHostIP":".*","podIP":".*","podLabels":{"run":"test-pod"},"remoteKind":"pod","remoteAddr":".*","remoteName":"test-pod","remoteNamespace":"%s","remoteLabels":{"run":"test-pod"}}`, nsServer, nsClient),
 		},
 		{
 			Name: "RunNetworkPolicyReportClient",
@@ -968,6 +974,7 @@ func TestOomkill(t *testing.T) {
 			expectedEntry.Container = "test-pod-container"
 
 			normalize := func(e *oomkillTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.KilledPid = 0
 				e.Pages = 0
@@ -1035,6 +1042,7 @@ func TestOpensnoop(t *testing.T) {
 			}
 
 			normalize := func(e *openTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.MountNsID = 0
 				e.Pid = 0
@@ -1092,6 +1100,7 @@ func TestNetworkGraph(t *testing.T) {
 			}
 
 			normalize := func(e *networkTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.PodHostIP = ""
 			}
@@ -1217,6 +1226,7 @@ func TestSigsnoop(t *testing.T) {
 			}
 
 			normalize := func(e *signalTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.TargetPid = 0
@@ -1258,6 +1268,7 @@ func TestSnisnoop(t *testing.T) {
 			expectedEntry.Container = ""
 
 			normalize := func(e *sniTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 			}
 
@@ -1356,6 +1367,7 @@ func TestTcpconnect(t *testing.T) {
 			}
 
 			normalize := func(e *tcpconnectTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.MountNsID = 0
@@ -1407,6 +1419,7 @@ func TestTcptracer(t *testing.T) {
 			}
 
 			normalize := func(e *tcpTypes.Event) {
+				e.Timestamp = 0
 				e.Node = ""
 				e.Pid = 0
 				e.Sport = 0
