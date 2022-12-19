@@ -152,7 +152,7 @@ int ig_traceloop_e(struct bpf_raw_tracepoint_args *ctx)
 	 * https://github.com/iovisor/bcc/issues/2623#issuecomment-560214481
 	 */
 	struct syscall_event_t sc = {};
-	u64 ts = bpf_ktime_get_ns();
+	u64 ts = bpf_ktime_get_boot_ns();
 	struct task_struct *task;
 	u64 nr = ctx->args[1];
 	struct pt_regs *args;
