@@ -20,6 +20,9 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cilium/ebpf"
+	"github.com/cilium/ebpf/asm"
+	"github.com/cilium/ebpf/btf"
 	"github.com/cilium/ebpf/link"
 	"golang.org/x/sys/unix"
 
@@ -131,4 +134,44 @@ func init() {
 //	19-12-2022 12:00:36:499110634
 func WallTimeFromBootTime(ts uint64) types.Time {
 	return types.Time(time.Unix(0, int64(ts)).Add(timeDiff).UnixNano())
+}
+
+func detectBpfKtimeGetBootNs() bool {
+	btfSpec, err := btf.LoadKernelSpec()
+	if err != nil {
+		return false
+	}
+
+	enum := btf.Enum{}
+
+	err = btfSpec.TypeByName("bpf_func_id", &enum)
+	if err != nil {
+		return false
+	}
+
+	return len(enum.Values) >= 125
+}
+
+func patchProgramSpec(p *ebpf.ProgramSpec) {
+	iter := p.Instructions.Iterate()
+
+	for iter.Next() {
+		in := iter.Ins
+
+		if in.OpCode.Class().IsJump() && in.OpCode.JumpOp() == asm.Call && in.Constant == 125 {
+			in.OpCode = asm.Mov.Op(asm.ImmSource)
+			in.Dst = asm.R0
+			in.Constant = 0
+		}
+	}
+}
+
+func RemoveBpfKtimeGetBootNs(programSpecs map[string]*ebpf.ProgramSpec) {
+	if detectBpfKtimeGetBootNs() {
+		return
+	}
+
+	for _, s := range programSpecs {
+		patchProgramSpec(s)
+	}
 }
