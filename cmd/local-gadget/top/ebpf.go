@@ -15,7 +15,6 @@
 package top
 
 import (
-	"os"
 	"time"
 
 	"github.com/cilium/ebpf"
@@ -38,11 +37,6 @@ func newEbpfCmd() *cobra.Command {
 	cols := types.GetColumns()
 
 	cmd := commontop.NewEbpfCmd(func(cmd *cobra.Command, args []string) error {
-		hostname, err := os.Hostname()
-		if err != nil {
-			return err
-		}
-
 		parser, err := commonutils.NewGadgetParserWithRuntimeInfo(&commonFlags.OutputConfig, cols)
 		if err != nil {
 			return commonutils.WrapInErrParserCreate(err)
@@ -63,7 +57,7 @@ func newEbpfCmd() *cobra.Command {
 					SortBy:   flags.ParsedSortBy,
 				}
 
-				return tracer.NewTracer(config, eventCallback, hostname)
+				return tracer.NewTracer(config, enricher, eventCallback)
 			},
 		}
 
