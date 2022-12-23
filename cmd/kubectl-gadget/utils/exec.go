@@ -62,7 +62,7 @@ func ExecPod(client *kubernetes.Clientset, node string, podCmd string, cmdStdout
 	}
 	podName := pods.Items[0].Name
 
-	restConfig, err := kubeRestConfig()
+	restConfig, err := kubeRestConfig(KubernetesConfigFlags)
 	if err != nil {
 		return err
 	}

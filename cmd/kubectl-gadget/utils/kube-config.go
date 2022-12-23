@@ -1,4 +1,4 @@
-// Copyright 2019-2021 The Inspektor Gadget authors
+// Copyright 2019-2022 The Inspektor Gadget authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,22 +15,14 @@
 package utils
 
 import (
+	"k8s.io/cli-runtime/pkg/genericclioptions"
 	restclient "k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/factory"
 )
 
-func kubeRestConfig() (*restclient.Config, error) {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	loadingRules.DefaultClientConfig = &clientcmd.DefaultClientConfig
-	if KubernetesConfigFlags.KubeConfig != nil {
-		loadingRules.ExplicitPath = *KubernetesConfigFlags.KubeConfig
-	}
-	overrides := &clientcmd.ConfigOverrides{ClusterDefaults: clientcmd.ClusterDefaults}
-	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
-
-	restConfig, err := clientConfig.ClientConfig()
+func kubeRestConfig(k8sConfigFlags *genericclioptions.ConfigFlags) (*restclient.Config, error) {
+	restConfig, err := k8sConfigFlags.ToRESTConfig()
 	if err != nil {
 		return nil, err
 	}
