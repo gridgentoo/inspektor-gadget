@@ -15,6 +15,7 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -82,7 +83,8 @@ func AddCommonFlags(command *cobra.Command, commonFlags *CommonFlags) {
 		}
 
 		// Output Mode
-		if err := commonFlags.ParseOutputConfig(); err != nil {
+		err := commonFlags.ParseOutputConfig()
+		if err != nil && command.Name() != "process" && !errors.Is(err, errors.New("\"tree\" output mode is not supported")) {
 			return err
 		}
 
