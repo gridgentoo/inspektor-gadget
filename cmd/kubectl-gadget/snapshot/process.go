@@ -41,6 +41,10 @@ func newProcessCmd() *cobra.Command {
 			},
 		}
 
+		if processGadget.Parser.GetOutputConfig().OutputMode == "tree" {
+			processGadget.printer = commonsnapshot.PrintTree
+		}
+
 		return processGadget.Run()
 	}
 
