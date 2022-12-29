@@ -43,7 +43,6 @@ type ProcessParser struct {
 type nodeEvent struct {
 	event    *types.Event
 	children []*nodeEvent
-	parent   *nodeEvent
 }
 
 func createTree(processes []*types.Event) *nodeEvent {
@@ -53,32 +52,29 @@ func createTree(processes []*types.Event) *nodeEvent {
 		nodes[process.Pid] = &nodeEvent{
 			event:    process,
 			children: make([]*nodeEvent, 0),
-			parent:   nil,
 		}
 	}
 
 	// Link all nodes together.
+	var root *nodeEvent
 	for _, node := range nodes {
-		for _, n := range nodes {
-			if node.event.Pid == n.event.ParentPid {
-				node.children = append(node.children, n)
-				n.parent = node
-			}
+		ppid := node.event.ParentPid
+		if _, ok := nodes[ppid]; !ok {
+			root = node
+			continue
 		}
+		nodes[ppid].children = append(nodes[ppid].children, node)
 	}
 
-	// Find the root, i.e. find the node without parent.
-	for _, node := range nodes {
-		if node.parent == nil {
-			return node
-		}
+	if root == nil {
+		panic("root is nil")
 	}
 
-	return nil
+	return root
 }
 
 func printNode(node *nodeEvent, front string) {
-	line := fmt.Sprintf("|-%s(%d)", node.event.Command, node.event.Pid)
+	line := fmt.Sprintf("'-%s(%d)", node.event.Command, node.event.Pid)
 	printedLine := front + line
 	if len(node.children) == 0 {
 		fmt.Println(printedLine)
