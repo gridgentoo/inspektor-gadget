@@ -16,7 +16,6 @@ package utils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -86,7 +85,7 @@ func GetNamespace() (string, bool) {
 	return namespace, overridden
 }
 
-func AddCommonFlags(command *cobra.Command, params *CommonFlags) {
+func AddCommonFlags(command *cobra.Command, params *CommonFlags, options ...commonutils.OutputConfigOption) {
 	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// Namespace
 		if !params.AllNamespaces {
@@ -132,8 +131,7 @@ func AddCommonFlags(command *cobra.Command, params *CommonFlags) {
 		}
 
 		// Output Mode
-		err := params.ParseOutputConfig()
-		if err != nil && command.Name() != "process" && !errors.Is(err, errors.New("\"tree\" output mode is not supported")) {
+		if err := params.ParseOutputConfig(); err != nil {
 			return err
 		}
 
@@ -146,7 +144,7 @@ func AddCommonFlags(command *cobra.Command, params *CommonFlags) {
 	// No 'Namespace' flag because it's added automatically by
 	// KubernetesConfigFlags.AddFlags(rootCmd.PersistentFlags())
 
-	commonutils.AddOutputFlags(command, &params.OutputConfig)
+	commonutils.AddOutputFlags(command, &params.OutputConfig, options...)
 
 	command.PersistentFlags().StringVarP(
 		&params.LabelsRaw,

@@ -15,7 +15,6 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
@@ -46,7 +45,7 @@ type CommonFlags struct {
 	RuntimeConfigs []*containerutils.RuntimeConfig
 }
 
-func AddCommonFlags(command *cobra.Command, commonFlags *CommonFlags) {
+func AddCommonFlags(command *cobra.Command, commonFlags *CommonFlags, options ...commonutils.OutputConfigOption) {
 	command.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		// Runtimes Configuration
 		parts := strings.Split(commonFlags.Runtimes, ",")
@@ -83,8 +82,7 @@ func AddCommonFlags(command *cobra.Command, commonFlags *CommonFlags) {
 		}
 
 		// Output Mode
-		err := commonFlags.ParseOutputConfig()
-		if err != nil && command.Name() != "process" && !errors.Is(err, errors.New("\"tree\" output mode is not supported")) {
+		if err := commonFlags.ParseOutputConfig(); err != nil {
 			return err
 		}
 
@@ -94,7 +92,7 @@ func AddCommonFlags(command *cobra.Command, commonFlags *CommonFlags) {
 	// do not print usage when there is an error
 	command.SilenceUsage = true
 
-	commonutils.AddOutputFlags(command, &commonFlags.OutputConfig)
+	commonutils.AddOutputFlags(command, &commonFlags.OutputConfig, options...)
 	commonutils.AddRuntimesSocketPathFlags(command, &commonFlags.RuntimesSocketPathConfig)
 
 	command.PersistentFlags().StringVarP(
