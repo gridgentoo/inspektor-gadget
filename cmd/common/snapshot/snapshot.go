@@ -49,6 +49,15 @@ type SnapshotParser[Event any] interface {
 	GetOutputConfig() *commonutils.OutputConfig
 }
 
+type CustomSnapshotParser[Event any] interface {
+	// UseCustomPrinter returns true if the gadget wants to print the events
+	// using a custom way.
+	UseCustomPrinter() bool
+
+	// CustomPrintEvents is called to print the events in a custom way.
+	CustomPrintEvents([]*Event) error
+}
+
 // SnapshotGadgetPrinter is in charge of printing the event of a snapshot gadget
 // using the parser.
 type SnapshotGadgetPrinter[Event SnapshotEvent] struct {
@@ -56,6 +65,12 @@ type SnapshotGadgetPrinter[Event SnapshotEvent] struct {
 }
 
 func (g *SnapshotGadgetPrinter[Event]) PrintEvents(allEvents []*Event) error {
+	if customParser, ok := g.Parser.(CustomSnapshotParser[Event]); ok {
+		if customParser.UseCustomPrinter() {
+			return customParser.CustomPrintEvents(allEvents)
+		}
+	}
+
 	g.Parser.SortEvents(&allEvents)
 
 	outputConfig := g.Parser.GetOutputConfig()

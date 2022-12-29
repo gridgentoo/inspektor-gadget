@@ -30,7 +30,6 @@ type SnapshotGadget[Event commonsnapshot.SnapshotEvent] struct {
 
 	commonFlags *utils.CommonFlags
 	runTracer   func(*localgadgetmanager.LocalGadgetManager, *containercollection.ContainerSelector) ([]*Event, error)
-	printer     func([]*Event) error
 }
 
 // Run runs a SnapshotGadget and prints the output after parsing it using the
@@ -51,10 +50,6 @@ func (g *SnapshotGadget[Event]) Run() error {
 	allEvents, err := g.runTracer(localGadgetManager, containerSelector)
 	if err != nil {
 		return commonutils.WrapInErrGadgetTracerCreateAndRun(err)
-	}
-
-	if g.printer != nil {
-		return g.printer(allEvents)
 	}
 
 	return g.PrintEvents(allEvents)

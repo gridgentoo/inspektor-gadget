@@ -32,8 +32,6 @@ type SnapshotGadget[Event commonsnapshot.SnapshotEvent] struct {
 	name        string
 	commonFlags *utils.CommonFlags
 	params      map[string]string
-
-	printer func([]*Event) error
 }
 
 // Run runs a SnapshotGadget and prints the output after parsing it using the
@@ -64,10 +62,6 @@ func (g *SnapshotGadget[Event]) Run() error {
 				return commonutils.WrapInErrUnmarshalOutput(err, r)
 			}
 			allEvents = append(allEvents, events...)
-		}
-
-		if g.printer != nil {
-			g.printer(allEvents)
 		}
 
 		return g.PrintEvents(allEvents)
