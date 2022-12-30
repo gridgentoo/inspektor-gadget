@@ -60,7 +60,7 @@ func newProcessCmd() *cobra.Command {
 
 	cmd := commonsnapshot.NewProcessCmd(runCmd, &flags)
 
-	utils.AddCommonFlags(cmd, &commonFlags)
+	utils.AddCommonFlags(cmd, &commonFlags, commonutils.WithCustomOutputMode(commonsnapshot.OutputModeProcessTree))
 
 	return cmd
 }
