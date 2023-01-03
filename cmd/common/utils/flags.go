@@ -43,15 +43,35 @@ type OutputConfig struct {
 
 	// Verbose prints additional information
 	Verbose bool
+
+	// customOutputMode is the name of the custom output mode.
+	customOutputMode string
 }
 
-func AddOutputFlags(command *cobra.Command, outputConfig *OutputConfig) {
+type OutputConfigOption func(*OutputConfig)
+
+func WithCustomOutputMode(m string) OutputConfigOption {
+	return func(outputConfig *OutputConfig) {
+		outputConfig.customOutputMode = m
+	}
+}
+
+func AddOutputFlags(command *cobra.Command, outputConfig *OutputConfig, options ...OutputConfigOption) {
+	for _, option := range options {
+		option(outputConfig)
+	}
+
+	supportedOutputModes := SupportedOutputModes
+	if len(outputConfig.customOutputMode) != 0 {
+		supportedOutputModes = append(SupportedOutputModes, outputConfig.customOutputMode)
+	}
+
 	command.PersistentFlags().StringVarP(
 		&outputConfig.OutputMode,
 		"output",
 		"o",
 		OutputModeColumns,
-		fmt.Sprintf("Output format (%s).", strings.Join(SupportedOutputModes, ", ")),
+		fmt.Sprintf("Output format (%s).", strings.Join(supportedOutputModes, ", ")),
 	)
 
 	command.PersistentFlags().BoolVarP(
@@ -65,6 +85,10 @@ func AddOutputFlags(command *cobra.Command, outputConfig *OutputConfig) {
 func (config *OutputConfig) ParseOutputConfig() error {
 	if config.Verbose {
 		log.StandardLogger().SetLevel(log.DebugLevel)
+	}
+
+	if len(config.customOutputMode) != 0 && config.OutputMode == config.customOutputMode {
+		return nil
 	}
 
 	switch {

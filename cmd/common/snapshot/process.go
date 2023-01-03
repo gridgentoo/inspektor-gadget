@@ -23,6 +23,8 @@ import (
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/gadgets/snapshot/process/types"
 )
 
+const OutputModeProcessTree = "tree"
+
 type ProcessFlags struct {
 	showThreads    bool
 	showParentsPID bool
@@ -83,6 +85,17 @@ func (p *ProcessParser) SortEvents(allProcesses *[]*types.Event) {
 
 	columnssort.SortEntries(types.GetColumns().GetColumnMap(), *allProcesses,
 		[]string{"node", "namespace", "pod", "container", "cmd", "tgid", "pid"})
+}
+
+func (p *ProcessParser) UseCustomPrinter() bool {
+	if p.outputConfig.OutputMode == OutputModeProcessTree {
+		return true
+	}
+	return false
+}
+
+func (p *ProcessParser) CustomPrintEvents(processes []*types.Event) error {
+	return types.PrintTree(processes)
 }
 
 func NewProcessCmd(runCmd func(*cobra.Command, []string) error, flags *ProcessFlags) *cobra.Command {
