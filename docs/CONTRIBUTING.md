@@ -133,9 +133,9 @@ The minikube should always be configured to use docker `driver`. Currently suppo
 container runtimes are `docker`, `containerd` and `cri-o`. You can set up minikube using:
 
 ```bash
-$ make -C integration/local-gadget/k8s setup-all
+$ make -C integration/local-gadget/k8s minikube-setup-all
 # for single container runtime e.g containerd
-$ make -C integration/local-gadget/k8s CONTAINER_RUNTIME=containerd setup
+$ make -C integration/local-gadget/k8s CONTAINER_RUNTIME=containerd minikube-setup
 ```
 
 And run the test using:

@@ -40,6 +40,7 @@ export BPFTOOL ARCH
 
 include crd.mk
 include tests.mk
+include minikube.mk
 
 LDFLAGS := "-X main.version=$(VERSION) \
 -X main.gadgetimage=$(CONTAINER_REPO):$(IMAGE_TAG) \
@@ -218,6 +219,8 @@ minikube-install: gadget-default-container kubectl-gadget
 	kubectl rollout status daemonset -n gadget gadget --timeout 30s
 	@echo "Image used by the gadget pod:"
 	kubectl get pod -n gadget -o yaml|grep imageID:
+	@echo "Minikube profile used:"
+	$(MINIKUBE) profile
 
 .PHONY: btfgen
 btfgen:

@@ -536,7 +536,7 @@ jobs:
           sudo swapoff -a
       - name: Run integration for container runtime ${{ matrix.runtime }}
         run: |
-          make -C integration/local-gadget/k8s CONTAINER_RUNTIME=${{ matrix.runtime }} -o build setup test
+          make -C integration/local-gadget/k8s CONTAINER_RUNTIME=${{ matrix.runtime }} -o build minikube-setup test
 
   test-integration-non-k8s-local-gadget:
     name: Integration tests for local gadget with non-Kubernetes Containers
