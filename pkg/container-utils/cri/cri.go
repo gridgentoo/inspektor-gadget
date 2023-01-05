@@ -78,24 +78,66 @@ func listContainers(c *CRIClient, filter *pb.ContainerFilter) ([]*pb.Container, 
 	return res.GetContainers(), nil
 }
 
-func (c *CRIClient) GetContainers() ([]*runtimeclient.ContainerData, error) {
+func (c *CRIClient) GetContainers(options ...runtimeclient.Option) ([]*runtimeclient.ContainerData, error) {
+	opts := runtimeclient.ParseOptions(options...)
+
 	containers, err := listContainers(c, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ret := make([]*runtimeclient.ContainerData, len(containers))
+	ret := make([]*runtimeclient.ContainerData, 0)
 
-	for i, container := range containers {
-		ret[i] = CRIContainerToContainerData(c.Name, container)
+	for _, container := range containers {
+		if !opts.MatchRequestedState(containerStatusStateToRuntimeClientState(container.GetState())) {
+			log.Debugf("CRIClient: container %q is not in expected state. Skipping it.", container.Id)
+			continue
+		}
+
+		if !opts.MustIncludeDetails() {
+			ret = append(ret, CRIContainerToContainerData(c.Name, container))
+			continue
+		}
+
+		detailedContainer, err := c.getContainerDetails(container.Id, opts)
+		if err != nil {
+			log.Warnf("CRIClient: couldn't get container details for %q. Skipping it: %s",
+				container.Id, err)
+			continue
+		}
+		if detailedContainer.Details == nil {
+			log.Warnf("CRIClient: container %q doesn't have details. Skipping it.", container.Id)
+			continue
+		}
+		ret = append(ret, detailedContainer)
 	}
 
 	return ret, nil
 }
 
-func (c *CRIClient) GetContainer(containerID string) (*runtimeclient.ContainerData, error) {
+func (c *CRIClient) GetContainer(containerID string, options ...runtimeclient.Option) (*runtimeclient.ContainerData, error) {
+	opts := runtimeclient.ParseOptions(options...)
+
+	containerID, err := runtimeclient.ParseContainerID(c.Name, containerID)
+	if err != nil {
+		return nil, err
+	}
+
+	if opts.MustIncludeDetails() {
+		detailedContainer, err := c.getContainerDetails(containerID, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		return detailedContainer, nil
+	}
+
 	containers, err := listContainers(c, &pb.ContainerFilter{
 		Id: containerID,
+		// TODO: Use the state from opts
+		// State: &pb.ContainerStateValue{
+		// 	State: runtimeStateToDockerState(opts.State()),
+		// },
 	})
 	if err != nil {
 		return nil, err
@@ -109,15 +151,14 @@ func (c *CRIClient) GetContainer(containerID string) (*runtimeclient.ContainerDa
 			len(containers), containerID, containers)
 	}
 
+	if !opts.MatchRequestedState(containerStatusStateToRuntimeClientState(containers[0].State)) {
+		return nil, fmt.Errorf("container %q is not in expected state", containerID)
+	}
+
 	return CRIContainerToContainerData(c.Name, containers[0]), nil
 }
 
-func (c *CRIClient) GetContainerDetails(containerID string) (*runtimeclient.ContainerDetailsData, error) {
-	containerID, err := runtimeclient.ParseContainerID(c.Name, containerID)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *CRIClient) getContainerDetails(containerID string, opts *runtimeclient.ContainerOptions) (*runtimeclient.ContainerData, error) {
 	request := &pb.ContainerStatusRequest{
 		ContainerId: containerID,
 		Verbose:     true,
@@ -126,6 +167,10 @@ func (c *CRIClient) GetContainerDetails(containerID string) (*runtimeclient.Cont
 	res, err := c.client.ContainerStatus(context.Background(), request)
 	if err != nil {
 		return nil, err
+	}
+
+	if !opts.MatchRequestedState(containerStatusStateToRuntimeClientState(res.Status.GetState())) {
+		return nil, fmt.Errorf("container %q is not in the expected state", containerID)
 	}
 
 	return parseContainerDetailsData(c.Name, res.Status, res.Info)
@@ -140,30 +185,30 @@ func (c *CRIClient) Close() error {
 }
 
 // parseContainerDetailsData parses the container status and extra information
-// returned by ContainerStatus() into a ContainerDetailsData structure.
-func parseContainerDetailsData(runtimeName string, containerStatus *pb.ContainerStatus,
+// returned by ContainerStatus() into a ContainerData structure.
+func parseContainerDetailsData(
+	runtimeName string,
+	containerStatus *pb.ContainerStatus,
 	extraInfo map[string]string,
-) (*runtimeclient.ContainerDetailsData, error) {
-	// Create container details structure to be filled.
-	containerDetailsData := &runtimeclient.ContainerDetailsData{
-		ContainerData: runtimeclient.ContainerData{
-			ID:      containerStatus.Id,
-			Name:    strings.TrimPrefix(containerStatus.GetMetadata().Name, "/"),
-			State:   containerStatusStateToRuntimeClientState(containerStatus.GetState()),
-			Runtime: runtimeName,
-		},
+) (*runtimeclient.ContainerData, error) {
+	// Create container structure to be filled.
+	containerData := &runtimeclient.ContainerData{
+		ID:      containerStatus.Id,
+		Name:    strings.TrimPrefix(containerStatus.GetMetadata().Name, "/"),
+		Runtime: runtimeName,
+		Details: &runtimeclient.ContainerDetailsData{},
 	}
 
 	// Fill K8S information.
-	runtimeclient.EnrichWithK8sMetadata(&containerDetailsData.ContainerData, containerStatus.Labels)
+	runtimeclient.EnrichWithK8sMetadata(containerData, containerStatus.Labels)
 
 	// Parse the extra info and fill the data.
-	err := parseExtraInfo(extraInfo, containerDetailsData)
+	err := parseExtraInfo(extraInfo, containerData.Details)
 	if err != nil {
 		return nil, err
 	}
 
-	return containerDetailsData, nil
+	return containerData, nil
 }
 
 // parseExtraInfo parses the extra information returned by ContainerStatus()
@@ -284,7 +329,6 @@ func CRIContainerToContainerData(runtimeName string, container *pb.Container) *r
 	containerData := &runtimeclient.ContainerData{
 		ID:      container.Id,
 		Name:    strings.TrimPrefix(container.GetMetadata().Name, "/"),
-		State:   containerStatusStateToRuntimeClientState(container.GetState()),
 		Runtime: runtimeName,
 	}
 

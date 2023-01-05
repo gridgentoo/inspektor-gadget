@@ -47,10 +47,15 @@ func init() {
 	}
 }
 
-func enrichContainerWithContainerData(containerData *runtimeclient.ContainerData, container *Container) {
+func enrichContainerWithContainerData(container *Container, containerData *runtimeclient.ContainerData) {
 	// Runtime
 	container.ID = containerData.ID
 	container.Runtime = containerData.Runtime
+
+	// Linux
+	if containerData.Details != nil {
+		container.Pid = uint32(containerData.Details.Pid)
+	}
 
 	// Kubernetes
 	container.Namespace = containerData.PodNamespace
@@ -89,7 +94,7 @@ func containerRuntimeEnricher(
 		return true
 	}
 
-	enrichContainerWithContainerData(containerData, container)
+	enrichContainerWithContainerData(container, containerData)
 
 	return true
 }
@@ -151,30 +156,24 @@ func WithContainerRuntimeEnrichment(runtime *containerutils.RuntimeConfig) Conta
 		})
 
 		// Enrich already running containers
-		containers, err := runtimeClient.GetContainers()
+		containers, err := runtimeClient.GetContainers(
+			runtimeclient.WithDetails(),
+			runtimeclient.WithState(runtimeclient.StateRunning),
+		)
 		if err != nil {
-			log.Warnf("Runtime enricher (%s): couldn't get current containers",
-				runtime.Name)
-
+			log.Warnf("Runtime enricher (%s): couldn't get current containers: %s",
+				runtime.Name, err)
 			return nil
 		}
 		for _, container := range containers {
-			if container.State != runtimeclient.StateRunning {
-				log.Debugf("Runtime enricher(%s): Skip container %q (ID: %s): not running",
-					runtime.Name, container.Name, container.ID)
-				continue
-			}
-
-			containerDetails, err := runtimeClient.GetContainerDetails(container.ID)
-			if err != nil {
-				log.Debugf("Runtime enricher (%s): Skip container %q (ID: %s): couldn't find container: %s",
-					runtime.Name, container.Name, container.ID, err)
+			if container.Details == nil {
+				log.Warnf("Runtime enricher (%s): missing details for container %q. Skipping it",
+					runtime.Name, container.ID)
 				continue
 			}
 
 			var c Container
-			c.Pid = uint32(containerDetails.Pid)
-			enrichContainerWithContainerData(&containerDetails.ContainerData, &c)
+			enrichContainerWithContainerData(&c, container)
 			cc.initialContainers = append(cc.initialContainers, &c)
 		}
 

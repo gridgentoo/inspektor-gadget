@@ -42,9 +42,6 @@ type ContainerData struct {
 	// with multiples, Name contains only the first element.
 	Name string
 
-	// Current state of the container.
-	State string
-
 	// Runtime is the name of the runtime (e.g. docker, cri-o, containerd). It
 	// is useful to distinguish who is the "owner" of each container in a list
 	// of containers collected from multiples runtimes.
@@ -58,15 +55,15 @@ type ContainerData struct {
 
 	// Namespace of the pod running the container.
 	PodNamespace string
+
+	// Detailed information about the container. This information will only be
+	// available when getting container using WithDetails option.
+	Details *ContainerDetailsData
 }
 
 // ContainerDetailsData contains container extra information returned from the
-// container runtime clients. This information might not be available when
-// listing containers.
+// container runtime clients.
 type ContainerDetailsData struct {
-	// ContainerDetailsData contains all ContainerData fields.
-	ContainerData
-
 	// Process identifier.
 	Pid int
 
@@ -110,17 +107,11 @@ const (
 // different container runtimes.
 type ContainerRuntimeClient interface {
 	// GetContainers returns a slice with the information of all the containers.
-	GetContainers() ([]*ContainerData, error)
+	GetContainers(options ...Option) ([]*ContainerData, error)
 
 	// GetContainers returns the information of the container identified by the
 	// provided ID.
-	GetContainer(containerID string) (*ContainerData, error)
-
-	// GetContainerDetails returns the detailed information of the container
-	// identified by the provided ID.
-	// The container details cannot be provided prior to container being in
-	// running state.
-	GetContainerDetails(containerID string) (*ContainerDetailsData, error)
+	GetContainer(containerID string, options ...Option) (*ContainerData, error)
 
 	// Close tears down the connection with the container runtime.
 	Close() error

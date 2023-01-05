@@ -84,22 +84,62 @@ func listContainers(c *DockerClient, filter *dockerfilters.Args) ([]dockertypes.
 	return containers, nil
 }
 
-func (c *DockerClient) GetContainers() ([]*runtimeclient.ContainerData, error) {
+func (c *DockerClient) GetContainers(options ...runtimeclient.Option) ([]*runtimeclient.ContainerData, error) {
+	opts := runtimeclient.ParseOptions(options...)
+
 	containers, err := listContainers(c, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	ret := make([]*runtimeclient.ContainerData, len(containers))
+	ret := make([]*runtimeclient.ContainerData, 0)
 
-	for i, container := range containers {
-		ret[i] = DockerContainerToContainerData(&container)
+	for _, container := range containers {
+		state := containerStatusStateToRuntimeClientState(container.State)
+		if !opts.MatchRequestedState(state) {
+			log.Debugf("DockerClient: container %q is not in expected state. It is in %q. Skipping it.",
+				container.ID, state)
+			continue
+		}
+
+		if !opts.MustIncludeDetails() {
+			ret = append(ret, DockerContainerToContainerData(&container))
+			continue
+		}
+
+		detailedContainer, err := c.getContainerDetails(container.ID, opts)
+		if err != nil {
+			log.Warnf("DockerClient: couldn't get container details for %q. Skipping it: %s",
+				container.ID, err)
+			continue
+		}
+		if detailedContainer.Details == nil {
+			log.Warnf("DockerClient: container %q doesn't have details. Skipping it.", container.ID)
+			continue
+		}
+		ret = append(ret, detailedContainer)
 	}
 
 	return ret, nil
 }
 
-func (c *DockerClient) GetContainer(containerID string) (*runtimeclient.ContainerData, error) {
+func (c *DockerClient) GetContainer(containerID string, options ...runtimeclient.Option) (*runtimeclient.ContainerData, error) {
+	opts := runtimeclient.ParseOptions(options...)
+
+	containerID, err := runtimeclient.ParseContainerID(runtimeclient.DockerName, containerID)
+	if err != nil {
+		return nil, err
+	}
+
+	if opts.MustIncludeDetails() {
+		detailedContainer, err := c.getContainerDetails(containerID, opts)
+		if err != nil {
+			return nil, err
+		}
+
+		return detailedContainer, nil
+	}
+
 	filter := dockerfilters.NewArgs()
 	filter.Add("id", containerID)
 
@@ -116,15 +156,14 @@ func (c *DockerClient) GetContainer(containerID string) (*runtimeclient.Containe
 			len(containers), containerID, containers)
 	}
 
+	if !opts.MatchRequestedState(containerStatusStateToRuntimeClientState(containers[0].State)) {
+		return nil, fmt.Errorf("container %q is not in expected state", containerID)
+	}
+
 	return DockerContainerToContainerData(&containers[0]), nil
 }
 
-func (c *DockerClient) GetContainerDetails(containerID string) (*runtimeclient.ContainerDetailsData, error) {
-	containerID, err := runtimeclient.ParseContainerID(runtimeclient.DockerName, containerID)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *DockerClient) getContainerDetails(containerID string, opts *runtimeclient.ContainerOptions) (*runtimeclient.ContainerData, error) {
 	containerJSON, err := c.client.ContainerInspect(context.Background(), containerID)
 	if err != nil {
 		return nil, err
@@ -143,20 +182,25 @@ func (c *DockerClient) GetContainerDetails(containerID string) (*runtimeclient.C
 		return nil, errors.New("container host config is nil")
 	}
 
-	containerDetailsData := runtimeclient.ContainerDetailsData{
-		ContainerData: runtimeclient.ContainerData{
-			ID:      containerJSON.ID,
-			Name:    strings.TrimPrefix(containerJSON.Name, "/"),
-			State:   containerStatusStateToRuntimeClientState(containerJSON.State.Status),
-			Runtime: runtimeclient.DockerName,
+	state := containerStatusStateToRuntimeClientState(containerJSON.State.Status)
+	if !opts.MatchRequestedState(state) {
+		return nil, fmt.Errorf("container %q is not in expected state. It is in %q",
+			containerID, state)
+	}
+
+	detailedContainer := runtimeclient.ContainerData{
+		ID:      containerJSON.ID,
+		Name:    strings.TrimPrefix(containerJSON.Name, "/"),
+		Runtime: runtimeclient.DockerName,
+		Details: &runtimeclient.ContainerDetailsData{
+			Pid:         containerJSON.State.Pid,
+			CgroupsPath: string(containerJSON.HostConfig.Cgroup),
 		},
-		Pid:         containerJSON.State.Pid,
-		CgroupsPath: string(containerJSON.HostConfig.Cgroup),
 	}
 	if len(containerJSON.Mounts) > 0 {
-		containerDetailsData.Mounts = make([]runtimeclient.ContainerMountData, len(containerJSON.Mounts))
+		detailedContainer.Details.Mounts = make([]runtimeclient.ContainerMountData, len(containerJSON.Mounts))
 		for i, containerMount := range containerJSON.Mounts {
-			containerDetailsData.Mounts[i] = runtimeclient.ContainerMountData{
+			detailedContainer.Details.Mounts[i] = runtimeclient.ContainerMountData{
 				Destination: containerMount.Destination,
 				Source:      containerMount.Source,
 			}
@@ -164,30 +208,30 @@ func (c *DockerClient) GetContainerDetails(containerID string) (*runtimeclient.C
 	}
 
 	// Fill K8S information.
-	runtimeclient.EnrichWithK8sMetadata(&containerDetailsData.ContainerData, containerJSON.Config.Labels)
+	runtimeclient.EnrichWithK8sMetadata(&detailedContainer, containerJSON.Config.Labels)
 
 	// Try to get cgroups information from /proc/<pid>/cgroup as a fallback.
 	// However, don't fail if such a file is not available, as it would prevent the
 	// whole feature to work on systems without this file.
-	if containerDetailsData.CgroupsPath == "" {
-		log.Debugf("cgroups info not available on Docker for container %s. Trying /proc/%d/cgroup as a fallback",
-			containerID, containerDetailsData.Pid)
+	if detailedContainer.Details.CgroupsPath == "" {
+		log.Debugf("DockerClient: cgroups info not available on Docker for container %q. Trying /proc/%d/cgroup as a fallback",
+			containerID, detailedContainer.Details.Pid)
 
 		// Get cgroup paths for V1 and V2.
-		cgroupPathV1, cgroupPathV2, err := cgroups.GetCgroupPaths(containerDetailsData.Pid)
+		cgroupPathV1, cgroupPathV2, err := cgroups.GetCgroupPaths(detailedContainer.Details.Pid)
 		if err == nil {
 			cgroupsPath := cgroupPathV1
 			if cgroupsPath == "" {
 				cgroupsPath = cgroupPathV2
 			}
-			containerDetailsData.CgroupsPath = cgroupsPath
+			detailedContainer.Details.CgroupsPath = cgroupsPath
 		} else {
-			log.Warnf("failed to get cgroups info of container %s from /proc/%d/cgroup: %s",
-				containerID, containerDetailsData.Pid, err)
+			log.Warnf("failed to get cgroups info of container %q from /proc/%d/cgroup: %s",
+				containerID, detailedContainer.Details.Pid, err)
 		}
 	}
 
-	return &containerDetailsData, nil
+	return &detailedContainer, nil
 }
 
 func (c *DockerClient) Close() error {
@@ -219,7 +263,6 @@ func DockerContainerToContainerData(container *dockertypes.Container) *runtimecl
 	containerData := &runtimeclient.ContainerData{
 		ID:      container.ID,
 		Name:    strings.TrimPrefix(container.Names[0], "/"),
-		State:   containerStatusStateToRuntimeClientState(container.State),
 		Runtime: runtimeclient.DockerName,
 	}
 

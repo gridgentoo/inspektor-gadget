@@ -20,8 +20,7 @@ import (
 	"time"
 
 	"github.com/containerd/containerd"
-	tasks "github.com/containerd/containerd/api/services/tasks/v1"
-	"github.com/containerd/containerd/api/types/task"
+	log "github.com/sirupsen/logrus"
 
 	runtimeclient "github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils/runtime-client"
 )
@@ -76,27 +75,66 @@ func (c *ContainerdClient) isSandboxContainer(container containerd.Container) bo
 	return false
 }
 
-func (c *ContainerdClient) GetContainers() ([]*runtimeclient.ContainerData, error) {
-	taskResponse, err := c.client.TaskService().List(context.TODO(), &tasks.ListTasksRequest{})
+func (c *ContainerdClient) GetContainers(options ...runtimeclient.Option) ([]*runtimeclient.ContainerData, error) {
+	opts := runtimeclient.ParseOptions(options...)
+
+	containers, err := c.client.Containers(context.TODO())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("listing containers: %w", err)
 	}
 
-	ret := make([]*runtimeclient.ContainerData, 0, len(taskResponse.Tasks))
-	for _, task := range taskResponse.Tasks {
-
-		container, err := c.getContainerdContainer(task.ID)
-		if err != nil {
-			return nil, err
-		}
-
+	ret := make([]*runtimeclient.ContainerData, 0)
+	for _, container := range containers {
 		if c.isSandboxContainer(container) {
+			log.Debugf("ContainerdClient: container %q is a sandbox container. Temporary skipping it", container.ID())
 			continue
 		}
 
-		containerData, err := c.containerdTaskAndContainerToContainerData(task, container)
+		containerData, err := c.containerToContainerData(container)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("converting container %q to ContainerData: %w", container.ID(), err)
+		}
+
+		var task containerd.Task = nil
+
+		if opts.IsStateFilterSet() {
+			if task == nil {
+				task, err = container.Task(context.TODO(), nil)
+				if err != nil {
+					// It could happen if the container is not running
+					log.Debugf("ContainerdClient: couldn't get container task for %q. Skipping it: %s",
+						container.ID(), err)
+					continue
+				}
+			}
+
+			status, err := task.Status(context.TODO())
+			if err != nil {
+				return nil, fmt.Errorf("getting task status for container %q: %w", container.ID(), err)
+			}
+
+			if !opts.MatchRequestedState(containerdProcessStatusToRuntimeClientState(string(status.Status))) {
+				log.Debugf("ContainerdClient: container %q is not in expected state. Skipping it.", container.ID())
+				continue
+			}
+		}
+
+		if opts.MustIncludeDetails() {
+			if task == nil {
+				task, err = container.Task(context.TODO(), nil)
+				if err != nil {
+					// It could happen if the container is not running
+					log.Debugf("ContainerdClient: couldn't get container task for %q. Skipping it: %s",
+						container.ID(), err)
+					continue
+				}
+			}
+
+			details, err := c.getContainerDetails(container, task)
+			if err != nil {
+				return nil, fmt.Errorf("getting container details for %q: %w", container.ID(), err)
+			}
+			containerData.Details = details
 		}
 
 		ret = append(ret, containerData)
@@ -105,43 +143,71 @@ func (c *ContainerdClient) GetContainers() ([]*runtimeclient.ContainerData, erro
 	return ret, nil
 }
 
-func (c *ContainerdClient) GetContainer(containerID string) (*runtimeclient.ContainerData, error) {
-	response, err := c.client.TaskService().Get(context.TODO(), &tasks.GetRequest{
-		ContainerID: containerID,
-	})
+func (c *ContainerdClient) GetContainer(containerID string, options ...runtimeclient.Option) (*runtimeclient.ContainerData, error) {
+	opts := runtimeclient.ParseOptions(options...)
+
+	containerID, err := runtimeclient.ParseContainerID(runtimeclient.ContainerdName, containerID)
+	if err != nil {
+		return nil, fmt.Errorf("parsing container ID: %w", err)
+	}
+
+	container, err := c.getContainer(containerID)
 	if err != nil {
 		return nil, err
 	}
 
-	containerData, err := c.ContainerdTaskToContainerData(response.Process)
-	if err != nil {
-		return nil, err
+	if c.isSandboxContainer(container) {
+		return nil, fmt.Errorf("container %q is a sandbox container. Temporary skipping it", container.ID())
 	}
+
+	containerData, err := c.containerToContainerData(container)
+	if err != nil {
+		return nil, fmt.Errorf("converting container %q to ContainerData: %w", container.ID(), err)
+	}
+
+	var task containerd.Task = nil
+
+	if opts.IsStateFilterSet() {
+		if task == nil {
+			task, err = container.Task(context.TODO(), nil)
+			if err != nil {
+				return nil, fmt.Errorf("getting task for container %q: %w", container.ID(), err)
+			}
+		}
+
+		status, err := task.Status(context.TODO())
+		if err != nil {
+			return nil, fmt.Errorf("getting task status for container %q: %w", container.ID(), err)
+		}
+
+		if !opts.MatchRequestedState(containerdProcessStatusToRuntimeClientState(string(status.Status))) {
+			return nil, fmt.Errorf("container %q is not in expected state. It is in %q state",
+				container.ID(), status.Status)
+		}
+	}
+
+	if opts.MustIncludeDetails() {
+		if task == nil {
+			task, err = container.Task(context.TODO(), nil)
+			if err != nil {
+				return nil, fmt.Errorf("getting task for container %q: %w", container.ID(), err)
+			}
+		}
+
+		details, err := c.getContainerDetails(container, task)
+		if err != nil {
+			return nil, err
+		}
+		containerData.Details = details
+	}
+
 	return containerData, nil
 }
 
-func (c *ContainerdClient) GetContainerDetails(containerID string) (*runtimeclient.ContainerDetailsData, error) {
-	response, err := c.client.TaskService().Get(context.TODO(), &tasks.GetRequest{
-		ContainerID: containerID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	proc := response.Process
-
-	container, err := c.getContainerdContainer(proc.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	containerData, err := c.containerdTaskAndContainerToContainerData(proc, container)
-	if err != nil {
-		return nil, err
-	}
-
+func (c *ContainerdClient) getContainerDetails(container containerd.Container, task containerd.Task) (*runtimeclient.ContainerDetailsData, error) {
 	spec, err := container.Spec(context.TODO())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting container %q spec: %w", container.ID(), err)
 	}
 
 	mountData := make([]runtimeclient.ContainerMountData, len(spec.Mounts))
@@ -154,21 +220,20 @@ func (c *ContainerdClient) GetContainerDetails(containerID string) (*runtimeclie
 	}
 
 	return &runtimeclient.ContainerDetailsData{
-		ContainerData: *containerData,
-		Pid:           int(proc.Pid),
-		CgroupsPath:   spec.Linux.CgroupsPath,
-		Mounts:        mountData,
+		Pid:         int(task.Pid()),
+		CgroupsPath: spec.Linux.CgroupsPath,
+		Mounts:      mountData,
 	}, nil
 }
 
-// Convert the state from container status to state of runtime client.
-func processStatusStateToRuntimeClientState(status task.Status) (runtimeClientState string) {
+// Convert the state from containerd process status to state of runtime client.
+func containerdProcessStatusToRuntimeClientState(status string) (runtimeClientState string) {
 	switch status {
-	case task.StatusCreated:
+	case string(containerd.Created):
 		runtimeClientState = runtimeclient.StateCreated
-	case task.StatusRunning:
+	case string(containerd.Running):
 		runtimeClientState = runtimeclient.StateRunning
-	case task.StatusStopped:
+	case string(containerd.Stopped):
 		runtimeClientState = runtimeclient.StateExited
 	default:
 		runtimeClientState = runtimeclient.StateUnknown
@@ -176,7 +241,10 @@ func processStatusStateToRuntimeClientState(status task.Status) (runtimeClientSt
 	return
 }
 
-func guessContainerName(container containerd.Container) string {
+// getContainerName returns the name of the container. If the container is
+// managed by Kubernetes, it returns the name of the container as defined in
+// Kubernetes. Otherwise, it returns the container ID.
+func getContainerName(container containerd.Container) string {
 	labels, err := container.Labels(context.TODO())
 	if err != nil {
 		return container.ID()
@@ -189,19 +257,10 @@ func guessContainerName(container containerd.Container) string {
 	return container.ID()
 }
 
-func (c *ContainerdClient) ContainerdTaskToContainerData(proc *task.Process) (*runtimeclient.ContainerData, error) {
-	container, err := c.getContainerdContainer(proc.ID)
-	if err != nil {
-		return nil, err
-	}
-
-	return c.containerdTaskAndContainerToContainerData(proc, container)
-}
-
-func (c *ContainerdClient) getContainerdContainer(id string) (containerd.Container, error) {
+func (c *ContainerdClient) getContainer(id string) (containerd.Container, error) {
 	containers, err := c.client.Containers(context.TODO(), fmt.Sprintf("id==%s", id))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting container %q: %w", id, err)
 	}
 	if len(containers) != 1 {
 		return nil, fmt.Errorf("expected 1 container with id %q, got %d", id, len(containers))
@@ -210,16 +269,15 @@ func (c *ContainerdClient) getContainerdContainer(id string) (containerd.Contain
 	return containers[0], nil
 }
 
-func (c *ContainerdClient) containerdTaskAndContainerToContainerData(proc *task.Process, container containerd.Container) (*runtimeclient.ContainerData, error) {
+func (c *ContainerdClient) containerToContainerData(container containerd.Container) (*runtimeclient.ContainerData, error) {
 	labels, err := container.Labels(context.TODO())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting container %q labels: %w", container.ID(), err)
 	}
 
 	containerData := &runtimeclient.ContainerData{
-		ID:      proc.ID,
-		Name:    guessContainerName(container),
-		State:   processStatusStateToRuntimeClientState(proc.Status),
+		ID:      container.ID(),
+		Name:    getContainerName(container),
 		Runtime: runtimeclient.ContainerdName,
 	}
 	runtimeclient.EnrichWithK8sMetadata(containerData, labels)
