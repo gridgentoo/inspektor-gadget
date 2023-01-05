@@ -18,8 +18,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/spf13/cobra"
 
@@ -102,10 +100,7 @@ func newSeccompCmd() *cobra.Command {
 		}
 		defer tracer.Close()
 
-		stop := make(chan os.Signal, 1)
-		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
-		<-stop
-
+		utils.WaitForEnd(&commonFlags)
 		return nil
 	}
 

@@ -20,6 +20,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -98,9 +99,19 @@ func newSeccompProfileCmd() *cobra.Command {
 		stop := make(chan os.Signal, 1)
 		signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
+		timeoutChannel := make(chan os.Signal, 1)
+		signal.Notify(timeoutChannel, os.Interrupt)
+		if commonFlags.Timeout != 0 {
+			go func() {
+				time.Sleep(time.Duration(commonFlags.Timeout) * time.Second)
+				timeoutChannel <- os.Interrupt
+			}()
+		}
+
 		// The profile can be generated upon container termination or when user
-		// requests it through a signal.
+		// requests it through a signal or on a timeout
 		select {
+		case <-timeoutChannel:
 		case <-stop:
 		case err := <-containerNotifier:
 			if err != nil {

@@ -401,6 +401,7 @@ func NewInteractiveCmd() *cobra.Command {
 		},
 	}
 	utils.AddCommonFlags(cmd, &commonFlags)
+	utils.HideFlagTimeout(cmd)
 
 	return cmd
 }
