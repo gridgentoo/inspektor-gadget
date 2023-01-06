@@ -34,8 +34,4 @@ func GetColumns() *columns.Columns[Event] {
 	return cols
 }
 
-func Base(ev eventtypes.Event) Event {
-	return Event{
-		Event: ev,
-	}
-}
+func Base(ev eventtypes.Event) *Event { return &Event{Event: ev} }

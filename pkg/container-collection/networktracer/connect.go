@@ -23,7 +23,7 @@ import (
 )
 
 type Tracer[Event any] interface {
-	Attach(pid uint32, eventCallback func(Event)) error
+	Attach(pid uint32, eventCallback func(*Event)) error
 	Detach(pid uint32) error
 }
 
@@ -40,8 +40,8 @@ type ConnectToContainerCollectionConfig[Event any] struct {
 	Tracer        Tracer[Event]
 	Resolver      containercollection.ContainerResolver
 	Selector      containercollection.ContainerSelector
-	EventCallback func(*containercollection.Container, Event)
-	Base          func(eventtypes.Event) Event
+	EventCallback func(*containercollection.Container, *Event)
+	Base          func(eventtypes.Event) *Event
 }
 
 // ConnectToContainerCollection connects a networking tracer to the
@@ -62,7 +62,7 @@ func ConnectToContainerCollection[Event any](
 	base := config.Base
 
 	attachContainerFunc := func(container *containercollection.Container) {
-		cbWithContainer := func(ev Event) {
+		cbWithContainer := func(ev *Event) {
 			eventCallback(container, ev)
 		}
 		err := tracer.Attach(container.Pid, cbWithContainer)
