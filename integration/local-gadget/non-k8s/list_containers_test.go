@@ -28,13 +28,13 @@ func TestFilterByContainerName(t *testing.T) {
 	cn := "test-filtered-container"
 	listContainersCmd := &Command{
 		Name: "RunFilterByContainerName",
-		Cmd:  fmt.Sprintf("./local-gadget list-containers -o json --runtimes=docker --containername=%s", cn),
+		Cmd:  fmt.Sprintf("./local-gadget list-containers -o json --runtimes=%s --containername=%s", *containerRuntime, cn),
 		ExpectedOutputFn: func(output string) error {
 			expectedContainer := &containercollection.Container{
 				Podname:   cn,
 				Name:      cn,
 				Namespace: "default",
-				Runtime:   "docker",
+				Runtime:   *containerRuntime,
 			}
 
 			normalize := func(c *containercollection.Container) {
@@ -57,11 +57,7 @@ func TestFilterByContainerName(t *testing.T) {
 	}
 
 	operations := []TestStep{
-		&DockerContainer{
-			Name:         cn,
-			Cmd:          "sleep inf",
-			StartAndStop: true,
-		},
+		NewStartAndStopContainer(*containerRuntime, cn, "sleep inf"),
 		SleepForSecondsCommand(2),
 		listContainersCmd,
 	}
@@ -75,7 +71,7 @@ func TestWatchContainers(t *testing.T) {
 	cn := "test-watched-container"
 	watchContainersCommand := &Command{
 		Name:         "RunWatchContainers",
-		Cmd:          fmt.Sprintf("./local-gadget list-containers -o json --watch --runtimes=docker -c %s", cn),
+		Cmd:          fmt.Sprintf("./local-gadget list-containers -o json --watch --runtimes=%s -c %s", *containerRuntime, cn),
 		StartAndStop: true,
 		ExpectedOutputFn: func(output string) error {
 			expectedEvents := []*containercollection.PubSubEvent{
@@ -84,7 +80,7 @@ func TestWatchContainers(t *testing.T) {
 					Container: &containercollection.Container{
 						Name:      cn,
 						Podname:   cn,
-						Runtime:   "docker",
+						Runtime:   *containerRuntime,
 						Namespace: "default",
 					},
 				},
@@ -93,7 +89,7 @@ func TestWatchContainers(t *testing.T) {
 					Container: &containercollection.Container{
 						Name:      cn,
 						Podname:   cn,
-						Runtime:   "docker",
+						Runtime:   *containerRuntime,
 						Namespace: "default",
 					},
 				},
@@ -122,10 +118,7 @@ func TestWatchContainers(t *testing.T) {
 	operations := []TestStep{
 		watchContainersCommand,
 		SleepForSecondsCommand(2),
-		&DockerContainer{
-			Name: cn,
-			Cmd:  "echo I am short lived container",
-		},
+		NewContainer(*containerRuntime, cn, "echo I am short lived container"),
 	}
 
 	RunTestSteps(operations, t)

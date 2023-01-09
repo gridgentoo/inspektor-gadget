@@ -21,70 +21,44 @@ import (
 	"github.com/inspektor-gadget/inspektor-gadget/pkg/container-utils/testutils"
 )
 
-// DockerContainer implements TestStep for docker containers
-type DockerContainer struct {
-	Name         string
-	Cmd          string
-	Options      []dockerOption
-	Cleanup      bool
-	StartAndStop bool
-
-	started bool
+// dockerContainer implements TestStep for docker containers
+type dockerContainer struct {
+	name         string
+	cmd          string
+	options      []containerOption
+	cleanup      bool
+	startAndStop bool
+	started      bool
 }
 
-func (d *DockerContainer) Run(t *testing.T) {
-	opts := append(optionsFromDockerOptions(d.Options), testutils.WithName(d.Name))
-	testutils.RunDockerContainer(context.Background(), t, d.Cmd, opts...)
+func (d *dockerContainer) Run(t *testing.T) {
+	opts := append(optionsFromContainerOptions(d.options), testutils.WithName(d.name))
+	testutils.RunDockerContainer(context.Background(), t, d.cmd, opts...)
 }
 
-func (d *DockerContainer) Start(t *testing.T) {
+func (d *dockerContainer) Start(t *testing.T) {
 	if d.started {
-		t.Logf("Warn(%s): trying to start already running container\n", d.Name)
+		t.Logf("Warn(%s): trying to start already running container\n", d.name)
 		return
 	}
-	opts := append(optionsFromDockerOptions(d.Options), testutils.WithName(d.Name), testutils.WithoutRemoval(), testutils.WithoutWait())
-	testutils.RunDockerContainer(context.Background(), t, d.Cmd, opts...)
+	opts := append(optionsFromContainerOptions(d.options), testutils.WithName(d.name), testutils.WithoutRemoval(), testutils.WithoutWait())
+	testutils.RunDockerContainer(context.Background(), t, d.cmd, opts...)
 	d.started = true
 }
 
-func (d *DockerContainer) Stop(t *testing.T) {
-	testutils.RemoveDockerContainer(context.Background(), t, d.Name)
+func (d *dockerContainer) Stop(t *testing.T) {
+	testutils.RemoveDockerContainer(context.Background(), t, d.name)
 	d.started = false
 }
 
-func (d *DockerContainer) IsCleanup() bool {
-	return d.Cleanup
+func (d *dockerContainer) IsCleanup() bool {
+	return d.cleanup
 }
 
-func (d *DockerContainer) IsStartAndStop() bool {
-	return d.StartAndStop
+func (d *dockerContainer) IsStartAndStop() bool {
+	return d.startAndStop
 }
 
-func (d *DockerContainer) Running() bool {
+func (d *dockerContainer) Running() bool {
 	return d.started
-}
-
-// dockerOption wraps testutils.Option to allow certain values only
-type dockerOption struct {
-	opt testutils.Option
-}
-
-func NewDockerOptions(opts ...dockerOption) []dockerOption {
-	return opts
-}
-
-func optionsFromDockerOptions(dockerOptions []dockerOption) []testutils.Option {
-	var opts []testutils.Option
-	for _, do := range dockerOptions {
-		opts = append(opts, do.opt)
-	}
-	return opts
-}
-
-func WithDockerImage(image string) dockerOption {
-	return dockerOption{opt: testutils.WithImage(image)}
-}
-
-func WithDockerSeccompProfile(profile string) dockerOption {
-	return dockerOption{opt: testutils.WithSeccompProfile(profile)}
 }

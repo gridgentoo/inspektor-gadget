@@ -4,9 +4,9 @@ build:
 
 # test
 # INTEGRATION_TESTS_PARAMS can be used to pass additional parameters locally e.g
-# INTEGRATION_TESTS_PARAMS="-test.run TestFilterByContainerName" make -C integration/local-gadget/docker test
-test-docker: build
+# INTEGRATION_TESTS_PARAMS="-test.run TestFilterByContainerName" make -C integration/local-gadget/non-k8s test-docker
+test-%: build
 	cp ../../../local-gadget-linux-amd64 local-gadget
 	go test -c -o ./local-gadget-docker-integration.test ./...
-	sudo ./local-gadget-docker-integration.test -test.v -integration $${INTEGRATION_TESTS_PARAMS}
+	sudo ./local-gadget-docker-integration.test -test.v -integration $${INTEGRATION_TESTS_PARAMS} -container-runtime $*
 	rm -f ./local-gadget-docker-integration.test ./local-gadget
