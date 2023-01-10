@@ -79,22 +79,23 @@ type Tracer struct {
 }
 
 type syscallEvent struct {
-	timestamp uint64
-	typ       uint8
-	contNr    uint8
-	cpu       uint16
-	id        uint16
-	pid       uint32
-	comm      string
-	args      []uint64
-	mountNsID uint64
-	retval    int
+	bootTimestamp      uint64
+	monotonicTimestamp uint64
+	typ                uint8
+	contNr             uint8
+	cpu                uint16
+	id                 uint16
+	pid                uint32
+	comm               string
+	args               []uint64
+	mountNsID          uint64
+	retval             int
 }
 
 type syscallEventContinued struct {
-	timestamp uint64
-	index     uint8
-	param     string
+	monotonicTimestamp uint64
+	index              uint8
+	param              string
 }
 
 func NewTracer(enricher gadgets.DataEnricherByMntNs) (*Tracer, error) {
@@ -244,14 +245,15 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 			sysEvent = (*traceloopSyscallEventT)(unsafe.Pointer(&record.RawSample[0]))
 
 			event := &syscallEvent{
-				timestamp: sysEvent.Timestamp,
-				typ:       sysEvent.Typ,
-				contNr:    sysEvent.ContNr,
-				cpu:       sysEvent.Cpu,
-				id:        sysEvent.Id,
-				pid:       sysEvent.Pid,
-				comm:      gadgets.FromCString(sysEvent.Comm[:]),
-				mountNsID: reader.mntnsID,
+				bootTimestamp:      sysEvent.BootTimestamp,
+				monotonicTimestamp: sysEvent.MonotonicTimestamp,
+				typ:                sysEvent.Typ,
+				contNr:             sysEvent.ContNr,
+				cpu:                sysEvent.Cpu,
+				id:                 sysEvent.Id,
+				pid:                sysEvent.Pid,
+				comm:               gadgets.FromCString(sysEvent.Comm[:]),
+				mountNsID:          reader.mntnsID,
 			}
 
 			var typeMap *map[uint64][]*syscallEvent
@@ -279,17 +281,17 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 				return nil
 			}
 
-			if _, ok := (*typeMap)[event.timestamp]; !ok {
-				(*typeMap)[event.timestamp] = make([]*syscallEvent, 0)
+			if _, ok := (*typeMap)[event.monotonicTimestamp]; !ok {
+				(*typeMap)[event.monotonicTimestamp] = make([]*syscallEvent, 0)
 			}
 
-			(*typeMap)[event.timestamp] = append((*typeMap)[event.timestamp], event)
+			(*typeMap)[event.monotonicTimestamp] = append((*typeMap)[event.monotonicTimestamp], event)
 		case alignSize(unsafe.Sizeof(*sysEventCont)):
 			sysEventCont = (*traceloopSyscallEventContT)(unsafe.Pointer(&record.RawSample[0]))
 
 			event := &syscallEventContinued{
-				timestamp: sysEventCont.Timestamp,
-				index:     sysEventCont.Index,
+				monotonicTimestamp: sysEventCont.MonotonicTimestamp,
+				index:              sysEventCont.Index,
 			}
 
 			if sysEventCont.Failed != 0 {
@@ -304,14 +306,14 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 			// Remove all non unicode character from the string.
 			event.param = strconv.Quote(event.param)
 
-			_, ok := syscallContinuedEventsMap[event.timestamp]
+			_, ok := syscallContinuedEventsMap[event.monotonicTimestamp]
 			if !ok {
 				// Just create a 0 elements slice for the moment, the ContNr will be
 				// checked later.
-				syscallContinuedEventsMap[event.timestamp] = make([]*syscallEventContinued, 0)
+				syscallContinuedEventsMap[event.monotonicTimestamp] = make([]*syscallEventContinued, 0)
 			}
 
-			syscallContinuedEventsMap[event.timestamp] = append(syscallContinuedEventsMap[event.timestamp], event)
+			syscallContinuedEventsMap[event.monotonicTimestamp] = append(syscallContinuedEventsMap[event.monotonicTimestamp], event)
 		default:
 			log.Debugf("size %d does not correspond to any expected element, which are %d and %d; received data are: %v", size, unsafe.Sizeof(sysEvent), unsafe.Sizeof(sysEventCont), record.RawSample)
 		}
@@ -338,7 +340,7 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 			event := &types.Event{
 				Event: eventtypes.Event{
 					Type:      eventtypes.NORMAL,
-					Timestamp: gadgets.WallTimeFromBootTime(enterTimestamp),
+					Timestamp: gadgets.WallTimeFromBootTime(enterEvent.bootTimestamp),
 				},
 				CPU:       enterEvent.cpu,
 				Pid:       enterEvent.pid,
@@ -434,7 +436,7 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 	// but they will be incomplete.
 	// One possible reason would be that the buffer is full and so it only remains
 	// some exit events and not the corresponding enter/
-	for enterTimestamp, enterTimestampEvents := range syscallEnterEventsMap {
+	for _, enterTimestampEvents := range syscallEnterEventsMap {
 		for _, enterEvent := range enterTimestampEvents {
 			syscallName, err := syscallGetName(enterEvent.id)
 			if err != nil {
@@ -447,7 +449,7 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 			incompleteEnterEvent := &types.Event{
 				Event: eventtypes.Event{
 					Type:      eventtypes.NORMAL,
-					Timestamp: gadgets.WallTimeFromBootTime(enterTimestamp),
+					Timestamp: gadgets.WallTimeFromBootTime(enterEvent.bootTimestamp),
 				},
 				CPU:       enterEvent.cpu,
 				Pid:       enterEvent.pid,
@@ -466,7 +468,7 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 		}
 	}
 
-	for exitTimestamp, exitTimestampEvents := range syscallExitEventsMap {
+	for _, exitTimestampEvents := range syscallExitEventsMap {
 		for _, exitEvent := range exitTimestampEvents {
 			syscallName, err := syscallGetName(exitEvent.id)
 			if err != nil {
@@ -478,7 +480,7 @@ func (t *Tracer) Read(containerID string) ([]*types.Event, error) {
 			incompleteExitEvent := &types.Event{
 				Event: eventtypes.Event{
 					Type:      eventtypes.NORMAL,
-					Timestamp: gadgets.WallTimeFromBootTime(exitTimestamp),
+					Timestamp: gadgets.WallTimeFromBootTime(exitEvent.bootTimestamp),
 				},
 				CPU:       exitEvent.cpu,
 				Pid:       exitEvent.pid,
