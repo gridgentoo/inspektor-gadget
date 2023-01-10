@@ -506,6 +506,7 @@ func WithRuncFanotify() ContainerCollectionOption {
 		runcNotifier, err := runcfanotify.NewRuncNotifier(func(notif runcfanotify.ContainerEvent) {
 			switch notif.Type {
 			case runcfanotify.EventTypeAddContainer:
+				log.Debugf("runc fanotify: add container %q", notif.ContainerID)
 				container := &Container{
 					ID:        notif.ContainerID,
 					Pid:       notif.ContainerPID,
@@ -513,6 +514,7 @@ func WithRuncFanotify() ContainerCollectionOption {
 				}
 				cc.AddContainer(container)
 			case runcfanotify.EventTypeRemoveContainer:
+				log.Debugf("runc fanotify: remove container %q", notif.ContainerID)
 				cc.RemoveContainer(notif.ContainerID)
 			}
 		})
@@ -613,6 +615,7 @@ func WithOCIConfigEnrichment() ContainerCollectionOption {
 			// TODO: handle this once we support pod sandboxes via WithContainerRuntimeEnrichment
 			// Issue: https://github.com/inspektor-gadget/inspektor-gadget/issues/1095
 			if ct := resolver.ContainerType(container.OciConfig.Annotations); ct == "sandbox" {
+				log.Debugf("OCIConfig enricher: temporary dropping sandbox container %q", container.ID)
 				return false
 			}
 
@@ -630,6 +633,8 @@ func WithOCIConfigEnrichment() ContainerCollectionOption {
 			if podUID := resolver.PodUID(container.OciConfig.Annotations); podUID != "" {
 				container.PodUID = podUID
 			}
+
+			log.Debugf("OCIConfig enricher: container %q was enriched", container.ID)
 
 			return true
 		})
