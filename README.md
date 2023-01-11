@@ -1,3 +1,6 @@
+Original repository   
+https://github.com/inspektor-gadget/inspektor-gadget   
+
 <h1 align="center">
   <picture>
     <source media="(prefers-color-scheme: light)" srcset="docs/images/logo/logo-horizontal.png">
